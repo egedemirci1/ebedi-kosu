@@ -110,8 +110,8 @@ export class Environment {
     this.skyGroup = new THREE.Group();
     this.mountainGroup = new THREE.Group();
     this.mountainStrips = [];
-    this.stripSpacing = 35;
-    this.poolSize = 6;
+    this.stripSpacing = 40;
+    this.poolSize = 10;
 
     const skyTex = createSkyTexture();
     const sky = new THREE.Mesh(

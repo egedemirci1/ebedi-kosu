@@ -1,6 +1,15 @@
 export class Sfx {
   constructor() {
     this.ctx = null;
+    this.enabled = true;
+  }
+
+  setEnabled(on) {
+    this.enabled = on;
+  }
+
+  isEnabled() {
+    return this.enabled;
   }
 
   init() {
@@ -14,6 +23,7 @@ export class Sfx {
   }
 
   playJump() {
+    if (!this.enabled) return;
     this.ensureReady();
     const t = this.ctx.currentTime;
 

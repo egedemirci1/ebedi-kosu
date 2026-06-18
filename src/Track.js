@@ -11,7 +11,7 @@ export class Track {
   constructor(scene) {
     this.scene = scene;
     this.segments = [];
-    this.poolSize = 10;
+    this.poolSize = 14;
 
     this.floorMat = new THREE.MeshStandardMaterial({
       color: 0x151520,

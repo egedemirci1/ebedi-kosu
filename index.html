@@ -32,11 +32,31 @@
           <div><kbd>Esc</kbd> — Duraklat</div>
           <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
         </div>
+        <div class="audio-toggles">
+          <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
+            <span class="audio-toggle-label">Müzik</span>
+            <span class="audio-toggle-state">Açık</span>
+          </button>
+          <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
+            <span class="audio-toggle-label">SFX</span>
+            <span class="audio-toggle-state">Açık</span>
+          </button>
+        </div>
         <button id="start-btn">KOŞ!</button>
       </div>
 
       <div id="pause-screen" class="overlay hidden">
         <h1 class="pause-title">DURAKLATILDI</h1>
+        <div class="audio-toggles">
+          <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
+            <span class="audio-toggle-label">Müzik</span>
+            <span class="audio-toggle-state">Açık</span>
+          </button>
+          <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
+            <span class="audio-toggle-label">SFX</span>
+            <span class="audio-toggle-state">Açık</span>
+          </button>
+        </div>
         <div class="pause-buttons">
           <button id="resume-btn">Devam Et</button>
           <button id="menu-btn" class="btn-secondary">Ana Menü</button>

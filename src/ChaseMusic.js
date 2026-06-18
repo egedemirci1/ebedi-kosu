@@ -13,6 +13,22 @@ export class ChaseMusic {
     this.beatIndex = 0;
     this.schedulerId = null;
     this.pauseStarted = 0;
+    this.enabled = true;
+  }
+
+  setEnabled(on) {
+    this.enabled = on;
+    if (!this.ctx || !this.master) return;
+
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setValueAtTime(this.master.gain.value, t);
+    const target = on && this.playing ? 0.45 : 0;
+    this.master.gain.linearRampToValueAtTime(target, t + 0.2);
+  }
+
+  isEnabled() {
+    return this.enabled;
   }
 
   init() {
@@ -42,7 +58,7 @@ export class ChaseMusic {
 
     this.master.gain.cancelScheduledValues(this.ctx.currentTime);
     this.master.gain.setValueAtTime(0, this.ctx.currentTime);
-    this.master.gain.linearRampToValueAtTime(0.45, this.ctx.currentTime + 1.5);
+    this.master.gain.linearRampToValueAtTime(this.enabled ? 0.45 : 0, this.ctx.currentTime + 1.5);
 
     this.schedule();
   }
@@ -93,7 +109,7 @@ export class ChaseMusic {
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.setValueAtTime(this.master.gain.value, t);
-    this.master.gain.linearRampToValueAtTime(0.45, t + 0.4);
+    this.master.gain.linearRampToValueAtTime(this.enabled ? 0.45 : 0, t + 0.4);
 
     this.schedule();
   }

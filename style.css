@@ -310,6 +310,61 @@ button:active {
   align-items: center;
 }
 
+.audio-toggles {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+#start-screen .audio-toggles {
+  margin-top: 8px;
+  margin-bottom: 20px;
+}
+
+#pause-screen .audio-toggles {
+  margin-bottom: 28px;
+}
+
+.audio-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 120px;
+  padding: 12px 18px;
+  font-size: 0.9rem;
+  background: rgba(20, 20, 40, 0.85);
+  border: 2px solid rgba(120, 100, 255, 0.45);
+  box-shadow: 0 0 20px rgba(120, 100, 255, 0.15);
+}
+
+.audio-toggle .audio-toggle-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.audio-toggle .audio-toggle-state {
+  font-size: 0.78rem;
+  color: #88ccaa;
+  font-weight: 400;
+}
+
+.audio-toggle.is-off {
+  border-color: rgba(255, 100, 120, 0.35);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.audio-toggle.is-off .audio-toggle-state {
+  color: #886666;
+}
+
+.audio-toggle:hover {
+  background: rgba(40, 30, 60, 0.9);
+}
+
 .pause-hint {
   margin-top: 28px;
   font-size: 0.85rem;

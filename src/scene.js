@@ -38,7 +38,7 @@ export function createCamera() {
     65,
     width / height,
     0.1,
-    120
+    220
   );
   camera.position.set(0, 5.5, 8);
   camera.lookAt(0, 1.5, -5);
@@ -62,16 +62,16 @@ export function setupLights(scene) {
   const moon = new THREE.DirectionalLight(0x8888ff, 0.8);
   moon.position.set(5, 12, -3);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(1024, 1024);
+  moon.shadow.mapSize.set(2048, 2048);
   moon.shadow.camera.near = 1;
-  moon.shadow.camera.far = 40;
-  moon.shadow.camera.left = -15;
-  moon.shadow.camera.right = 15;
-  moon.shadow.camera.top = 15;
-  moon.shadow.camera.bottom = -15;
+  moon.shadow.camera.far = 90;
+  moon.shadow.camera.left = -22;
+  moon.shadow.camera.right = 22;
+  moon.shadow.camera.top = 22;
+  moon.shadow.camera.bottom = -22;
   scene.add(moon);
 
-  const rim = new THREE.PointLight(0xff2244, 1.2, 25);
+  const rim = new THREE.PointLight(0xff2244, 1.2, 55);
   rim.position.set(0, 3, 6);
   scene.add(rim);
 

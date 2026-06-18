@@ -10,6 +10,8 @@ import { Sfx } from './Sfx.js';
 import { Environment } from './Environment.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
+const MUSIC_PREF_KEY = 'ebedi-kosu-music';
+const SFX_PREF_KEY = 'ebedi-kosu-sfx';
 
 export class Game {
   constructor() {
@@ -55,6 +57,10 @@ export class Game {
       gameOverMenuBtn: document.getElementById('gameover-menu-btn'),
     };
 
+    this.music.setEnabled(this.loadAudioPref(MUSIC_PREF_KEY, true));
+    this.sfx.setEnabled(this.loadAudioPref(SFX_PREF_KEY, true));
+    this.updateAudioToggleUI();
+
     this.bindInput();
     this.bindUI();
     this.updateBestScoreUI();
@@ -67,6 +73,49 @@ export class Game {
 
   getBestScore() {
     return parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10);
+  }
+
+  loadAudioPref(key, defaultValue) {
+    const stored = localStorage.getItem(key);
+    if (stored === null) return defaultValue;
+    return stored === '1';
+  }
+
+  saveAudioPref(key, enabled) {
+    localStorage.setItem(key, enabled ? '1' : '0');
+  }
+
+  updateAudioToggleUI() {
+    const musicOn = this.music.isEnabled();
+    const sfxOn = this.sfx.isEnabled();
+    document.querySelectorAll('.audio-toggle-music').forEach((btn) => {
+      this.setAudioToggleState(btn, musicOn);
+    });
+    document.querySelectorAll('.audio-toggle-sfx').forEach((btn) => {
+      this.setAudioToggleState(btn, sfxOn);
+    });
+  }
+
+  setAudioToggleState(button, enabled) {
+    if (!button) return;
+    button.classList.toggle('is-off', !enabled);
+    button.setAttribute('aria-pressed', String(enabled));
+    const state = button.querySelector('.audio-toggle-state');
+    if (state) state.textContent = enabled ? 'Açık' : 'Kapalı';
+  }
+
+  toggleMusic() {
+    const enabled = !this.music.isEnabled();
+    this.music.setEnabled(enabled);
+    this.saveAudioPref(MUSIC_PREF_KEY, enabled);
+    this.updateAudioToggleUI();
+  }
+
+  toggleSfx() {
+    const enabled = !this.sfx.isEnabled();
+    this.sfx.setEnabled(enabled);
+    this.saveAudioPref(SFX_PREF_KEY, enabled);
+    this.updateAudioToggleUI();
   }
 
   saveBestScore(distance) {
@@ -91,6 +140,12 @@ export class Game {
       if (this.state === 'playing') this.pause();
     });
     this.ui.gameOverMenuBtn.addEventListener('click', () => this.goToMenu());
+    document.querySelectorAll('.audio-toggle-music').forEach((btn) => {
+      btn.addEventListener('click', () => this.toggleMusic());
+    });
+    document.querySelectorAll('.audio-toggle-sfx').forEach((btn) => {
+      btn.addEventListener('click', () => this.toggleSfx());
+    });
   }
 
   isOppositePressed(code) {
@@ -224,6 +279,7 @@ export class Game {
     this.state = 'paused';
     this.music.pause();
     this.ui.pauseScreen.classList.remove('hidden');
+    this.updateAudioToggleUI();
     this.clock.getDelta();
   }
 
@@ -333,6 +389,10 @@ export class Game {
     }
 
     this.lights.rim.intensity = 1 + danger * 2;
+
+    const moon = this.lights.moon;
+    moon.target.position.set(this.player.x * 0.4, 0, -40);
+    moon.target.updateMatrixWorld();
   }
 
   updateUI() {

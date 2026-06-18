@@ -13,13 +13,16 @@ const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
 const LANE_MATCH = 0.85;
 
+const SPAWN_LOOKAHEAD = -110;
+const MIN_SPAWN_Z = -130;
+
 export class ObstacleManager {
   constructor(scene) {
     this.scene = scene;
     this.obstacles = [];
     this.spawnTimer = 0;
     this.spawnInterval = 1.8;
-    this.nextZ = -30;
+    this.nextZ = -55;
     this.difficulty = 0;
     this.gapManager = null;
 
@@ -63,6 +66,23 @@ export class ObstacleManager {
       if (Math.abs(obs.z - z) < margin) return true;
     }
     return false;
+  }
+
+  getFurthestZ() {
+    let furthest = 0;
+    for (const obs of this.obstacles) {
+      if (!obs.active) continue;
+      if (obs.z < furthest) furthest = obs.z;
+    }
+    return furthest;
+  }
+
+  prefill() {
+    let attempts = 0;
+    while (this.nextZ > MIN_SPAWN_Z && attempts < 16) {
+      this.spawn();
+      attempts++;
+    }
   }
 
   spawn() {
@@ -134,7 +154,7 @@ export class ObstacleManager {
     this.spawnInterval = Math.max(0.9, 1.8 - this.difficulty * 0.7);
 
     this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
+    if (this.spawnTimer <= 0 || this.getFurthestZ() > SPAWN_LOOKAHEAD) {
       this.spawn();
     }
 
@@ -160,7 +180,8 @@ export class ObstacleManager {
     }
     this.obstacles = [];
     this.spawnTimer = 0.5;
-    this.nextZ = -30;
+    this.nextZ = -55;
     this.difficulty = 0;
+    this.prefill();
   }
 }
