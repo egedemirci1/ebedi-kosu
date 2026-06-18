@@ -38,6 +38,11 @@ export class ChaseMusic {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0;
 
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.05);
+    this.hihatBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = this.hihatBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
     const comp = this.ctx.createDynamicsCompressor();
     comp.threshold.value = -24;
     comp.ratio.value = 12;
@@ -175,13 +180,8 @@ export class ChaseMusic {
   }
 
   playHiHat(time, vol) {
-    const bufferSize = this.ctx.sampleRate * 0.05;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-
     const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
+    src.buffer = this.hihatBuffer;
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
     filter.frequency.value = 7000;

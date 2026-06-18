@@ -20,12 +20,15 @@ export class ObstacleManager {
   constructor(scene) {
     this.scene = scene;
     this.obstacles = [];
+    this.pool = [];
     this.spawnTimer = 0;
     this.spawnInterval = 1.8;
     this.nextZ = -55;
     this.difficulty = 0;
     this.gapManager = null;
+    this._activeCount = 0;
 
+    this.geometries = {};
     this.materials = {
       barrier: new THREE.MeshStandardMaterial({
         color: 0xff6644,
@@ -49,6 +52,11 @@ export class ObstacleManager {
         fog: false,
       }),
     };
+
+    for (const type of OBSTACLE_TYPES) {
+      const def = OBSTACLE_DEFS[type];
+      this.geometries[type] = new THREE.BoxGeometry(1.6, def.height, 0.5);
+    }
   }
 
   setGapManager(gapManager) {
@@ -61,7 +69,8 @@ export class ObstacleManager {
   }
 
   hasObstacleNear(z, margin = 4) {
-    for (const obs of this.obstacles) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
       if (!obs.active) continue;
       if (Math.abs(obs.z - z) < margin) return true;
     }
@@ -70,7 +79,8 @@ export class ObstacleManager {
 
   getFurthestZ() {
     let furthest = 0;
-    for (const obs of this.obstacles) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
       if (!obs.active) continue;
       if (obs.z < furthest) furthest = obs.z;
     }
@@ -85,6 +95,52 @@ export class ObstacleManager {
     }
   }
 
+  createMesh(type) {
+    const def = OBSTACLE_DEFS[type];
+    const mesh = new THREE.Mesh(this.geometries[type], this.materials[type]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.position.y = def.meshY;
+    return mesh;
+  }
+
+  acquireObstacle(type, lane, z) {
+    const def = OBSTACLE_DEFS[type];
+    let entry = this.pool.pop();
+
+    if (entry) {
+      entry.type = type;
+      entry.lane = lane;
+      entry.z = z;
+      entry.topY = def.meshY + def.height / 2;
+      entry.jumpable = def.jumpable;
+      entry.active = true;
+      entry.mesh.material = this.materials[type];
+      entry.mesh.position.set(LANES[lane], def.meshY, z);
+      this.scene.add(entry.mesh);
+    } else {
+      const mesh = this.createMesh(type);
+      mesh.position.set(LANES[lane], def.meshY, z);
+      this.scene.add(mesh);
+      entry = {
+        mesh,
+        type,
+        lane,
+        z,
+        topY: def.meshY + def.height / 2,
+        jumpable: def.jumpable,
+        active: true,
+      };
+    }
+
+    if (this._activeCount < this.obstacles.length) {
+      this.obstacles[this._activeCount] = entry;
+    } else {
+      this.obstacles.push(entry);
+    }
+    this._activeCount++;
+  }
+
   spawn() {
     if (this.isBlockedPosition(this.nextZ)) {
       this.nextZ -= 3;
@@ -94,20 +150,7 @@ export class ObstacleManager {
 
     const type = this.pickType();
     const lane = Math.floor(Math.random() * 3);
-    const mesh = this.createMesh(type);
-    mesh.position.set(LANES[lane], 0, this.nextZ);
-    this.scene.add(mesh);
-
-    const def = OBSTACLE_DEFS[type];
-    this.obstacles.push({
-      mesh,
-      type,
-      lane,
-      z: this.nextZ,
-      topY: def.meshY + def.height / 2,
-      jumpable: def.jumpable,
-      active: true,
-    });
+    this.acquireObstacle(type, lane, this.nextZ);
 
     this.nextZ -= 8 + Math.random() * 6;
     this.spawnTimer = this.spawnInterval;
@@ -124,20 +167,28 @@ export class ObstacleManager {
     return OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
   }
 
-  createMesh(type) {
-    const def = OBSTACLE_DEFS[type];
-    const geo = new THREE.BoxGeometry(1.6, def.height, 0.5);
-    const mesh = new THREE.Mesh(geo, this.materials[type]);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.position.y = def.meshY;
-    return mesh;
+  releaseObstacle(entry) {
+    entry.active = false;
+    this.scene.remove(entry.mesh);
+    this.pool.push(entry);
+  }
+
+  removeObstacle(entry) {
+    this.releaseObstacle(entry);
+    for (let i = 0; i < this._activeCount; i++) {
+      if (this.obstacles[i] === entry) {
+        this.obstacles[i] = this.obstacles[this._activeCount - 1];
+        this._activeCount--;
+        return;
+      }
+    }
   }
 
   checkCollision(player) {
     const feetY = player.y;
 
-    for (const obs of this.obstacles) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
       if (!obs.active) continue;
       if (Math.abs(obs.z) > COLLISION_Z) continue;
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
@@ -159,26 +210,34 @@ export class ObstacleManager {
     }
 
     const move = speed * dt;
-    for (const obs of this.obstacles) {
+    let write = 0;
+
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
+      if (!obs.active) continue;
+
       obs.mesh.position.z += move;
       obs.z = obs.mesh.position.z;
 
       if (obs.z > 8) {
-        obs.active = false;
-        this.scene.remove(obs.mesh);
-        obs.mesh.geometry.dispose();
+        this.releaseObstacle(obs);
+        continue;
       }
+
+      if (write !== i) this.obstacles[write] = obs;
+      write++;
     }
 
-    this.obstacles = this.obstacles.filter((o) => o.active);
+    this._activeCount = write;
   }
 
   reset() {
-    for (const obs of this.obstacles) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
       this.scene.remove(obs.mesh);
-      obs.mesh.geometry.dispose();
+      this.pool.push(obs);
     }
-    this.obstacles = [];
+    this._activeCount = 0;
     this.spawnTimer = 0.5;
     this.nextZ = -55;
     this.difficulty = 0;

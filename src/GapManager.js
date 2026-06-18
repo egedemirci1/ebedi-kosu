@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TRACK_WIDTH, RECYCLE_AFTER_Z } from './Track.js';
 
 const GAP_START_DISTANCE = 80;
@@ -8,14 +9,21 @@ const FIRST_GAP_Z = -105;
 const GAP_LOOKAHEAD = -165;
 const GAP_MARGIN = 4;
 
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const UNIT_CONE = new THREE.ConeGeometry(1, 1, 3);
+const STRIPE_BOX = new THREE.BoxGeometry(0.9, 0.05, 0.35);
+const CHEVRON_BOX = new THREE.BoxGeometry(0.15, 0.06, 1);
+
 export class GapManager {
   constructor(scene) {
     this.scene = scene;
     this.gaps = [];
+    this.gapPool = [];
     this.nextGapZ = -90;
     this.spawnedFirst = false;
     this.obstacleManager = null;
     this.time = 0;
+    this._activeCount = 0;
 
     this.edgeMat = new THREE.MeshStandardMaterial({
       color: 0x2a2030,
@@ -50,9 +58,49 @@ export class GapManager {
       fog: false,
     });
 
-    this.voidMat = new THREE.MeshBasicMaterial({ color: 0x020004, fog: false });
-    this.voidDeepMat = new THREE.MeshBasicMaterial({ color: 0x000002, fog: false });
     this.floorCoverMat = new THREE.MeshBasicMaterial({ color: 0x080810, fog: false });
+
+    this.voidLayerMats = [
+      new THREE.MeshBasicMaterial({ color: 0x080010, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0x040008, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0x020004, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0x000001, fog: false }),
+    ];
+
+    this.emberMats = [
+      new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0xff1144, transparent: true, fog: false }),
+    ];
+
+    this.ledgeGeo = new THREE.BoxGeometry(TRACK_WIDTH, 0.4, 0.7);
+    this.rimGeo = new THREE.BoxGeometry(TRACK_WIDTH + 0.1, 0.06, 0.12);
+    this.emberGeo = new THREE.SphereGeometry(0.06, 4, 4);
+    this.warningGeo = this.buildWarningGeometry();
+  }
+
+  buildWarningGeometry() {
+    const parts = [];
+
+    for (let row = 0; row < 3; row++) {
+      for (let i = -3; i <= 3; i++) {
+        const geo = STRIPE_BOX.clone();
+        geo.translate(i * 1.15, 0.03, row * 0.55);
+        parts.push(geo);
+      }
+    }
+
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const geo = CHEVRON_BOX.clone();
+        geo.scale(1, 1, 0.6 + i * 0.15);
+        const matrix = new THREE.Matrix4().makeRotationY(side * 0.5);
+        matrix.setPosition(side * (0.8 + i * 0.35), 0.06, 1.2 - i * 0.3);
+        geo.applyMatrix4(matrix);
+        parts.push(geo);
+      }
+    }
+
+    return mergeGeometries(parts, false);
   }
 
   setObstacleManager(obstacleManager) {
@@ -60,7 +108,8 @@ export class GapManager {
   }
 
   isGapAt(worldZ) {
-    for (const gap of this.gaps) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
       if (!gap.active) continue;
       if (worldZ >= gap.startZ && worldZ <= gap.endZ) return true;
     }
@@ -68,34 +117,28 @@ export class GapManager {
   }
 
   isGapNear(worldZ, margin = GAP_MARGIN) {
-    for (const gap of this.gaps) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
       if (!gap.active) continue;
       if (worldZ >= gap.startZ - margin && worldZ <= gap.endZ + margin) return true;
     }
     return false;
   }
 
-  addCliffEdge(group, side, edgeZ, width) {
-    const ledge = new THREE.Mesh(
-      new THREE.BoxGeometry(TRACK_WIDTH, 0.4, 0.7),
-      this.edgeMat
-    );
+  addCliffEdge(group, side, edgeZ) {
+    const ledge = new THREE.Mesh(this.ledgeGeo, this.edgeMat);
     ledge.position.set(0, -0.08, edgeZ);
     ledge.castShadow = true;
     group.add(ledge);
 
-    const rim = new THREE.Mesh(
-      new THREE.BoxGeometry(TRACK_WIDTH + 0.1, 0.06, 0.12),
-      this.rimMat
-    );
+    const rim = new THREE.Mesh(this.rimGeo, this.rimMat);
     rim.position.set(0, 0.1, edgeZ + side * 0.28);
     group.add(rim);
 
     for (let i = -3; i <= 3; i++) {
-      const chunk = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5 + Math.random() * 0.4, 0.12, 0.35),
-        this.edgeMat
-      );
+      const sx = 0.5 + Math.random() * 0.4;
+      const chunk = new THREE.Mesh(UNIT_BOX, this.edgeMat);
+      chunk.scale.set(sx, 0.12, 0.35);
       chunk.position.set(
         i * 1.1 + (Math.random() - 0.5) * 0.3,
         0.04,
@@ -107,10 +150,8 @@ export class GapManager {
 
     for (let i = 0; i < 4; i++) {
       const cliffH = 2 + Math.random() * 3;
-      const cliff = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2 + Math.random(), cliffH, 0.5),
-        this.cliffMat
-      );
+      const cliff = new THREE.Mesh(UNIT_BOX, this.cliffMat);
+      cliff.scale.set(1.2 + Math.random(), cliffH, 0.5);
       cliff.position.set(
         (Math.random() - 0.5) * 6,
         -cliffH / 2 - 0.2,
@@ -121,10 +162,9 @@ export class GapManager {
     }
 
     for (let i = -3; i <= 3; i++) {
-      const spike = new THREE.Mesh(
-        new THREE.ConeGeometry(0.08, 0.5 + Math.random() * 0.6, 3),
-        this.cliffMat
-      );
+      const spikeH = 0.5 + Math.random() * 0.6;
+      const spike = new THREE.Mesh(UNIT_CONE, this.cliffMat);
+      spike.scale.set(0.08, spikeH, 0.08);
       spike.position.set(i * 1.0, -0.35 - Math.random() * 0.3, edgeZ + side * 0.2);
       spike.rotation.x = Math.PI;
       spike.rotation.z = (Math.random() - 0.5) * 0.4;
@@ -132,116 +172,121 @@ export class GapManager {
     }
   }
 
-  addVoidDepth(group, width) {
+  addVoidDepth(group, width, embers, voidGlows) {
+    const voidW = TRACK_WIDTH - 0.4;
+    const voidD = width - 0.2;
     const layers = [
-      { y: -1.5, h: 1.5, color: 0x080010, opacity: 1 },
-      { y: -3.5, h: 2.5, color: 0x040008, opacity: 1 },
-      { y: -6.5, h: 4, color: 0x020004, opacity: 1 },
-      { y: -10, h: 5, color: 0x000001, opacity: 1 },
+      { y: -1.5, h: 1.5 },
+      { y: -3.5, h: 2.5 },
+      { y: -6.5, h: 4 },
+      { y: -10, h: 5 },
     ];
 
-    for (const layer of layers) {
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(TRACK_WIDTH - 0.4, layer.h, width - 0.2),
-        new THREE.MeshBasicMaterial({ color: layer.color, fog: false })
-      );
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i];
+      const box = new THREE.Mesh(UNIT_BOX, this.voidLayerMats[i]);
+      box.scale.set(voidW, layer.h, voidD);
       box.position.y = layer.y;
       group.add(box);
     }
 
     for (let i = 0; i < 12; i++) {
-      const ember = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04 + Math.random() * 0.06, 4, 4),
-        new THREE.MeshBasicMaterial({
-          color: i % 3 === 0 ? 0xff4422 : 0xff1144,
-          fog: false,
-        })
-      );
+      const scale = 0.65 + Math.random() * 1.0;
+      const ember = new THREE.Mesh(this.emberGeo, this.emberMats[i % 3 === 0 ? 0 : 1]);
+      ember.scale.setScalar(scale);
       ember.position.set(
         (Math.random() - 0.5) * (TRACK_WIDTH - 2),
         -1.5 - Math.random() * 6,
         (Math.random() - 0.5) * (width - 1)
       );
-      ember.userData.isEmber = true;
-      ember.userData.phase = Math.random() * Math.PI * 2;
+      embers.push({ mesh: ember, phase: Math.random() * Math.PI * 2, baseY: ember.position.y });
       group.add(ember);
     }
 
     const voidGlow = new THREE.PointLight(0xff0022, 1.2, width + 8);
     voidGlow.position.y = -3;
-    voidGlow.userData.isVoidGlow = true;
+    voidGlows.push({ light: voidGlow, kind: 'red' });
     group.add(voidGlow);
 
     const voidGlow2 = new THREE.PointLight(0xff4400, 0.5, width + 5);
     voidGlow2.position.y = -1;
-    voidGlow2.userData.isVoidGlow = true;
+    voidGlows.push({ light: voidGlow2, kind: 'orange' });
     group.add(voidGlow2);
   }
 
-  addWarningZone(group, width) {
-    const warnGroup = new THREE.Group();
-    warnGroup.position.z = -width / 2 - 5;
-
-    for (let row = 0; row < 3; row++) {
-      for (let i = -3; i <= 3; i++) {
-        const stripe = new THREE.Mesh(
-          new THREE.BoxGeometry(0.9, 0.05, 0.35),
-          this.warningMat
-        );
-        stripe.position.set(i * 1.15, 0.03, row * 0.55);
-        warnGroup.add(stripe);
-      }
-    }
-
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        const chevron = new THREE.Mesh(
-          new THREE.BoxGeometry(0.15, 0.06, 0.6 + i * 0.15),
-          this.warningMat
-        );
-        chevron.position.set(side * (0.8 + i * 0.35), 0.06, 1.2 - i * 0.3);
-        chevron.rotation.y = side * 0.5;
-        warnGroup.add(chevron);
-      }
-    }
-
-    group.add(warnGroup);
-    return warnGroup;
-  }
-
-  spawnGap(z) {
-    const width = 3.5 + Math.random() * 2;
-    const startZ = z - width / 2;
-    const endZ = z + width / 2;
+  buildGapGroup(width) {
     const group = new THREE.Group();
-    group.position.z = z;
+    const embers = [];
+    const voidGlows = [];
 
-    const floorCover = new THREE.Mesh(
-      new THREE.BoxGeometry(TRACK_WIDTH + 0.4, 0.25, width + 0.6),
-      this.floorCoverMat
-    );
+    const floorCover = new THREE.Mesh(UNIT_BOX, this.floorCoverMat);
+    floorCover.scale.set(TRACK_WIDTH + 0.4, 0.25, width + 0.6);
     floorCover.position.y = -0.02;
     group.add(floorCover);
 
-    this.addVoidDepth(group, width);
+    this.addVoidDepth(group, width, embers, voidGlows);
 
     for (const side of [-1, 1]) {
       const edgeZ = side < 0 ? -width / 2 : width / 2;
-      this.addCliffEdge(group, side, edgeZ, width);
+      this.addCliffEdge(group, side, edgeZ);
     }
 
-    this.addWarningZone(group, width);
+    const warnMesh = new THREE.Mesh(this.warningGeo, this.warningMat);
+    warnMesh.position.z = -width / 2 - 5;
+    group.add(warnMesh);
 
-    this.scene.add(group);
+    return { group, embers, voidGlows };
+  }
 
-    this.gaps.push({
-      group,
-      startZ,
-      endZ,
-      width,
-      z,
-      active: true,
-    });
+  acquireGap(z) {
+    let entry;
+
+    if (this.gapPool.length > 0) {
+      entry = this.gapPool.pop();
+      entry.z = z;
+      entry.startZ = z - entry.width / 2;
+      entry.endZ = z + entry.width / 2;
+      entry.active = true;
+      entry.group.position.z = z;
+      this.scene.add(entry.group);
+      for (const ember of entry.embers) {
+        ember.mesh.position.y = ember.baseY;
+      }
+    } else {
+      const width = 3.5 + Math.random() * 2;
+      const built = this.buildGapGroup(width);
+      entry = {
+        group: built.group,
+        embers: built.embers,
+        voidGlows: built.voidGlows,
+        width,
+        z,
+        startZ: z - width / 2,
+        endZ: z + width / 2,
+        active: true,
+      };
+      entry.group.position.z = z;
+      this.scene.add(entry.group);
+    }
+
+    if (this._activeCount < this.gaps.length) {
+      this.gaps[this._activeCount] = entry;
+    } else {
+      this.gaps.push(entry);
+    }
+    this._activeCount++;
+
+    return entry;
+  }
+
+  releaseGap(entry) {
+    entry.active = false;
+    this.scene.remove(entry.group);
+    this.gapPool.push(entry);
+  }
+
+  spawnGap(z) {
+    this.acquireGap(z);
   }
 
   trySpawnNext() {
@@ -267,9 +312,12 @@ export class GapManager {
       this.trySpawnNext();
     }
 
-    const furthestZ = this.gaps.length
-      ? Math.min(...this.gaps.map((g) => g.z))
-      : this.nextGapZ;
+    let furthestZ = this.nextGapZ;
+    for (let i = 0; i < this._activeCount; i++) {
+      if (this.gaps[i].active && this.gaps[i].z < furthestZ) {
+        furthestZ = this.gaps[i].z;
+      }
+    }
 
     if (furthestZ > GAP_LOOKAHEAD) {
       this.trySpawnNext();
@@ -277,43 +325,47 @@ export class GapManager {
 
     const move = speed * dt;
     const pulse = 0.85 + Math.sin(this.time * 3) * 0.15;
+    let write = 0;
 
-    for (const gap of this.gaps) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+
       gap.group.position.z += move;
       gap.z = gap.group.position.z;
       gap.startZ += move;
       gap.endZ += move;
 
-      gap.group.traverse((child) => {
-        if (child.userData.isEmber) {
-          child.material.opacity = 0.5 + Math.sin(this.time * 4 + child.userData.phase) * 0.5;
-          child.position.y += Math.sin(this.time * 2 + child.userData.phase) * dt * 0.3;
-        }
-        if (child.userData.isVoidGlow) {
-          child.intensity = (child.color?.getHex?.() === 0xff0022 ? 1.2 : 0.5) * pulse;
-        }
-      });
+      for (const ember of gap.embers) {
+        ember.mesh.material.opacity =
+          0.5 + Math.sin(this.time * 4 + ember.phase) * 0.5;
+        ember.mesh.position.y =
+          ember.baseY + Math.sin(this.time * 2 + ember.phase) * 0.4;
+      }
+
+      for (const glow of gap.voidGlows) {
+        glow.light.intensity = (glow.kind === 'red' ? 1.2 : 0.5) * pulse;
+      }
 
       if (gap.startZ > RECYCLE_AFTER_Z) {
-        gap.active = false;
-        this.scene.remove(gap.group);
-        gap.group.traverse((child) => {
-          if (child.geometry) child.geometry.dispose();
-        });
+        this.releaseGap(gap);
+        continue;
       }
+
+      if (write !== i) this.gaps[write] = gap;
+      write++;
     }
 
-    this.gaps = this.gaps.filter((g) => g.active);
+    this._activeCount = write;
   }
 
   reset() {
-    for (const gap of this.gaps) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
       this.scene.remove(gap.group);
-      gap.group.traverse((child) => {
-        if (child.geometry) child.geometry.dispose();
-      });
+      this.gapPool.push(gap);
     }
-    this.gaps = [];
+    this._activeCount = 0;
     this.nextGapZ = -90;
     this.spawnedFirst = false;
     this.time = 0;

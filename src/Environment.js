@@ -53,17 +53,20 @@ function createStarField(count = 900) {
   return new THREE.Points(geo, mat);
 }
 
+const MOUNTAIN_MAT = new THREE.MeshStandardMaterial({
+  color: 0x0a0812,
+  emissive: 0x120818,
+  emissiveIntensity: 0.25,
+  roughness: 1,
+  flatShading: true,
+  fog: false,
+});
+
+const MOUNTAIN_CONE = new THREE.ConeGeometry(1, 1, 4);
+
 function buildMountainPeak(width, height, depth) {
-  const geo = new THREE.ConeGeometry(width, height, 4);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x0a0812,
-    emissive: 0x120818,
-    emissiveIntensity: 0.25,
-    roughness: 1,
-    flatShading: true,
-    fog: false,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(MOUNTAIN_CONE, MOUNTAIN_MAT);
+  mesh.scale.set(width, height, width);
   mesh.rotation.y = Math.random() * Math.PI;
   mesh.position.y = height * 0.5 - 0.5;
   mesh.position.z = (Math.random() - 0.5) * depth;
@@ -94,8 +97,9 @@ function createMountainStrip(z) {
     fog: false,
   });
 
+  const mistGeo = new THREE.PlaneGeometry(22, 7);
   for (const side of [-1, 1]) {
-    const sideMist = new THREE.Mesh(new THREE.PlaneGeometry(22, 7), fogMat);
+    const sideMist = new THREE.Mesh(mistGeo, fogMat);
     sideMist.rotation.x = -Math.PI / 2;
     sideMist.position.set(side * 22, 3, 0);
     group.add(sideMist);

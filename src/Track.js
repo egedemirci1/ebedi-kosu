@@ -26,7 +26,19 @@ export class Track {
       fog: false,
     });
 
+    this.railMat = new THREE.MeshStandardMaterial({
+      color: 0x442244,
+      emissive: 0x220011,
+      emissiveIntensity: 0.5,
+      fog: false,
+    });
+
     this.lineMat = new THREE.MeshBasicMaterial({ color: 0x334466, fog: false });
+
+    this.floorGeo = new THREE.BoxGeometry(TRACK_WIDTH, 0.3, SEGMENT_LENGTH);
+    this.wallGeo = new THREE.BoxGeometry(0.4, 3, SEGMENT_LENGTH);
+    this.railGeo = new THREE.BoxGeometry(0.08, 0.08, SEGMENT_LENGTH);
+    this.lineGeo = new THREE.BoxGeometry(0.05, 0.02, SEGMENT_LENGTH);
 
     for (let i = 0; i < this.poolSize; i++) {
       this.segments.push(this.createSegment(-i * SEGMENT_LENGTH));
@@ -37,42 +49,25 @@ export class Track {
     const group = new THREE.Group();
     group.position.z = z;
 
-    const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(TRACK_WIDTH, 0.3, SEGMENT_LENGTH),
-      this.floorMat
-    );
+    const floor = new THREE.Mesh(this.floorGeo, this.floorMat);
     floor.position.y = -0.15;
     floor.receiveShadow = true;
     group.add(floor);
 
     for (const side of [-1, 1]) {
-      const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(0.4, 3, SEGMENT_LENGTH),
-        this.wallMat
-      );
+      const wall = new THREE.Mesh(this.wallGeo, this.wallMat);
       wall.position.set(side * (TRACK_WIDTH / 2 + 0.2), 1.5, 0);
       wall.castShadow = true;
       wall.receiveShadow = true;
       group.add(wall);
 
-      const rail = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.08, SEGMENT_LENGTH),
-        new THREE.MeshStandardMaterial({
-          color: 0x442244,
-          emissive: 0x220011,
-          emissiveIntensity: 0.5,
-          fog: false,
-        })
-      );
+      const rail = new THREE.Mesh(this.railGeo, this.railMat);
       rail.position.set(side * (TRACK_WIDTH / 2), 0.05, 0);
       group.add(rail);
     }
 
     for (const lane of LANES) {
-      const line = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, 0.02, SEGMENT_LENGTH),
-        this.lineMat
-      );
+      const line = new THREE.Mesh(this.lineGeo, this.lineMat);
       line.position.set(lane, 0.01, 0);
       group.add(line);
     }

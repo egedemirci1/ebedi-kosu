@@ -14,7 +14,10 @@ export function getViewportSize() {
 }
 
 export function createRenderer() {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+  });
   const { width, height } = getViewportSize();
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -70,6 +73,8 @@ export function setupLights(scene) {
   moon.shadow.camera.top = 22;
   moon.shadow.camera.bottom = -22;
   scene.add(moon);
+  moon.target.position.set(0, 0, -40);
+  scene.add(moon.target);
 
   const rim = new THREE.PointLight(0xff2244, 1.2, 55);
   rim.position.set(0, 3, 6);

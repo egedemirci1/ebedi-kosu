@@ -35,6 +35,8 @@ export class Game {
     this.baseSpeed = 14;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
+    this._needsRender = true;
+    this._lastCamFov = 65;
     this.clock = new THREE.Clock();
     this.music = new ChaseMusic();
     this.sfx = new Sfx();
@@ -226,6 +228,11 @@ export class Game {
   }
 
   applyHit(wallSide = 0) {
+    if (wallSide !== 0) {
+      this.sfx.playWallHit(wallSide);
+    } else {
+      this.sfx.playObstacleHit();
+    }
     this.player.stumble(0.6, wallSide);
     this.creature.lunge(3);
     this.shakeIntensity = 0.3;
@@ -264,6 +271,7 @@ export class Game {
   start() {
     this.music.start();
     this.state = 'playing';
+    this._needsRender = true;
     this.resetWorld();
 
     this.ui.startScreen.classList.add('hidden');
@@ -277,6 +285,7 @@ export class Game {
   pause() {
     if (this.state !== 'playing') return;
     this.state = 'paused';
+    this._needsRender = true;
     this.music.pause();
     this.ui.pauseScreen.classList.remove('hidden');
     this.updateAudioToggleUI();
@@ -286,6 +295,7 @@ export class Game {
   resume() {
     if (this.state !== 'paused') return;
     this.state = 'playing';
+    this._needsRender = true;
     this.music.resume();
     this.ui.pauseScreen.classList.add('hidden');
     this.clock.getDelta();
@@ -305,6 +315,7 @@ export class Game {
 
   gameOver(reason = 'caught') {
     this.state = 'gameover';
+    this._needsRender = true;
     this.music.stop();
     this.saveBestScore(this.distance);
     this.ui.pauseScreen.classList.add('hidden');
@@ -329,40 +340,55 @@ export class Game {
   }
 
   update(dt) {
-    if (this.state !== 'playing') return;
+    if (this.state === 'playing') {
+      dt = Math.min(dt, 0.05);
 
-    dt = Math.min(dt, 0.05);
+      this.speed = this.baseSpeed + this.distance * 0.008;
+      this.distance += this.speed * dt;
 
-    this.speed = this.baseSpeed + this.distance * 0.008;
-    this.distance += this.speed * dt;
+      this.track.update(dt, this.speed);
+      this.gaps.update(dt, this.speed, this.distance);
+      this.obstacles.update(dt, this.speed, this.distance);
+      this.player.update(dt, !this.gaps.isGapAt(0));
+      this.creature.update(dt, this.player.x, this.speed, this.player.isStumbling);
 
-    this.track.update(dt, this.speed);
-    this.gaps.update(dt, this.speed, this.distance);
-    this.obstacles.update(dt, this.speed, this.distance);
-    this.player.update(dt, !this.gaps.isGapAt(0));
-    this.creature.update(dt, this.player.x, this.speed, this.player.isStumbling);
+      if (this.player.isFalling && this.player.y < -3) {
+        this.gameOver('fell');
+        return;
+      }
 
-    if (this.player.isFalling && this.player.y < -3) {
-      this.gameOver('fell');
-      return;
+      const hit = this.obstacles.checkCollision(this.player);
+      if (hit) {
+        this.applyHit(0);
+        this.obstacles.removeObstacle(hit);
+      }
+
+      if (this.creature.hasCaught()) {
+        this.gameOver('caught');
+        return;
+      }
+
+      this.music.setDanger(this.creature.dangerLevel);
+      this.environment.update(dt, this.speed, this.camera);
+      this.updateCamera(dt);
+      this.updateUI();
+      this._needsRender = true;
     }
+  }
 
-    const hit = this.obstacles.checkCollision(this.player);
-    if (hit) {
-      this.applyHit(0);
-      hit.active = false;
-      this.scene.remove(hit.mesh);
-      hit.mesh.geometry.dispose();
+  render() {
+    if (!this._needsRender) return;
+    this.renderer.render(this.scene, this.camera);
+    if (this.state !== 'playing') {
+      this._needsRender = false;
     }
+  }
 
-    if (this.creature.hasCaught()) {
-      this.gameOver('caught');
-    }
-
-    this.music.setDanger(this.creature.dangerLevel);
-    this.environment.update(dt, this.speed, this.camera);
-    this.updateCamera(dt);
-    this.updateUI();
+  loop() {
+    const dt = this.clock.getDelta();
+    this.update(dt);
+    this.render();
+    requestAnimationFrame(() => this.loop());
   }
 
   updateCamera(dt) {
@@ -375,7 +401,10 @@ export class Game {
     this.camera.position.y += (targetY - this.camera.position.y) * dt * 3;
     this.camera.position.z += (targetZ - this.camera.position.z) * dt * 3;
     this.camera.fov += (fov - this.camera.fov) * dt * 3;
-    this.camera.updateProjectionMatrix();
+    if (Math.abs(this.camera.fov - this._lastCamFov) > 0.05) {
+      this.camera.updateProjectionMatrix();
+      this._lastCamFov = this.camera.fov;
+    }
 
     const lookY = 1.5 + this.player.y * 0.5;
     this.camera.lookAt(this.player.x * 0.3, lookY, profile.lookZ);
@@ -389,10 +418,6 @@ export class Game {
     }
 
     this.lights.rim.intensity = 1 + danger * 2;
-
-    const moon = this.lights.moon;
-    moon.target.position.set(this.player.x * 0.4, 0, -40);
-    moon.target.updateMatrixWorld();
   }
 
   updateUI() {
@@ -405,18 +430,9 @@ export class Game {
     const { width, height } = getViewportSize();
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this._lastCamFov = this.camera.fov;
     this.renderer.setSize(width, height);
-  }
-
-  render() {
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  loop() {
-    const dt = this.clock.getDelta();
-    this.update(dt);
-    this.render();
-    requestAnimationFrame(() => this.loop());
+    this._needsRender = true;
   }
 
   run() {
