@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Ebedi Koşu</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="ui">
+      <div id="hud">
+        <div class="hud-left">
+          <div class="hud-item">
+            <span class="label">Mesafe</span>
+            <span id="score">0</span>m
+          </div>
+          <div class="hud-item danger">
+            <span class="label">Tehlike</span>
+            <div id="danger-bar"><div id="danger-fill"></div></div>
+          </div>
+        </div>
+        <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
+      </div>
+
+      <div id="start-screen" class="overlay">
+        <h1>EBEDİ KOŞU</h1>
+        <p class="subtitle">Geçmişin seni kovalıyor. Koş ve geçmişinden kaç.</p>
+        <p id="best-score" class="best-score"></p>
+        <div class="controls-info">
+          <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
+          <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
+          <div><kbd>Esc</kbd> — Duraklat</div>
+          <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
+        </div>
+        <button id="start-btn">KOŞ!</button>
+      </div>
+
+      <div id="pause-screen" class="overlay hidden">
+        <h1 class="pause-title">DURAKLATILDI</h1>
+        <div class="pause-buttons">
+          <button id="resume-btn">Devam Et</button>
+          <button id="menu-btn" class="btn-secondary">Ana Menü</button>
+        </div>
+        <p class="pause-hint"><kbd>Esc</kbd> — Devam et</p>
+      </div>
+
+      <div id="game-over-screen" class="overlay hidden">
+        <h1>YAKALANDIN!</h1>
+        <p id="final-score">0 metre koştun</p>
+        <p id="best-score-gameover" class="best-score"></p>
+        <div class="game-over-buttons">
+          <button id="restart-btn">Tekrar Dene</button>
+          <button id="gameover-menu-btn" class="btn-secondary">Ana Menü</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
