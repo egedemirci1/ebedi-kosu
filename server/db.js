@@ -21,9 +21,42 @@ export function isDbConfigured() {
   return Boolean(process.env.DATABASE_URL);
 }
 
+export function getDatabaseName() {
+  if (!process.env.DATABASE_URL) return null;
+  try {
+    const pathname = new URL(process.env.DATABASE_URL).pathname;
+    return pathname.replace(/^\//, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function ensureSchema() {
+  const db = getPool();
+  if (!db) return;
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS scores (
+      id SERIAL PRIMARY KEY,
+      player_name TEXT NOT NULL,
+      distance INTEGER NOT NULL CHECK (distance >= 1),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+export async function pingDatabase() {
+  const db = getPool();
+  if (!db) throw new Error('database_unavailable');
+  await db.query('SELECT 1');
+  await ensureSchema();
+}
+
 export async function fetchTopScores(limit = 10) {
   const db = getPool();
   if (!db) return null;
+
+  await ensureSchema();
 
   const { rows } = await db.query(
     `SELECT player_name, distance, created_at
@@ -53,6 +86,8 @@ export async function insertScore(name, distance) {
   if (!db) {
     return { ok: false, status: 503, error: 'database_unavailable' };
   }
+
+  await ensureSchema();
 
   await db.query(
     `INSERT INTO scores (player_name, distance) VALUES ($1, $2)`,

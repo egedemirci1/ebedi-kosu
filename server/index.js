@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { closePool, fetchTopScores, insertScore, isDbConfigured } from './db.js';
+import { closePool, fetchTopScores, insertScore, isDbConfigured, pingDatabase, getDatabaseName } from './db.js';
 import { LB_DEBUG, lbError, lbLog, maskDatabaseUrl } from './debug.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,8 +12,30 @@ const port = Number(process.env.PORT) || 3000;
 const app = express();
 app.use(express.json({ limit: '1kb' }));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, database: isDbConfigured() });
+app.get('/api/health', async (_req, res) => {
+  if (!isDbConfigured()) {
+    res.json({ ok: true, database: false, connected: false });
+    return;
+  }
+
+  try {
+    await pingDatabase();
+    res.json({
+      ok: true,
+      database: true,
+      connected: true,
+      db_name: getDatabaseName(),
+    });
+  } catch (err) {
+    lbError('GET /api/health DB ping failed:', err.message);
+    res.json({
+      ok: true,
+      database: true,
+      connected: false,
+      db_name: getDatabaseName(),
+      ...(LB_DEBUG ? { error: err.message } : { error: 'connection_failed' }),
+    });
+  }
 });
 
 app.get('/api/scores/top', async (_req, res) => {
@@ -30,7 +52,11 @@ app.get('/api/scores/top', async (_req, res) => {
     res.json({ scores: scores ?? [] });
   } catch (err) {
     lbError('GET /api/scores/top failed:', err.message);
-    res.status(500).json({ scores: [], error: 'server_error' });
+    res.status(500).json({
+      scores: [],
+      error: 'server_error',
+      ...(LB_DEBUG ? { detail: err.message } : {}),
+    });
   }
 });
 
@@ -47,7 +73,11 @@ app.post('/api/scores', async (req, res) => {
     res.status(result.status).json({ ok: true });
   } catch (err) {
     lbError('POST /api/scores failed:', err.message);
-    res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({
+      ok: false,
+      error: 'server_error',
+      ...(LB_DEBUG ? { detail: err.message } : {}),
+    });
   }
 });
 
@@ -65,10 +95,10 @@ const server = app.listen(port, async () => {
     return;
   }
   lbLog('DATABASE_URL', maskDatabaseUrl(process.env.DATABASE_URL));
-  if (!LB_DEBUG) return;
+  lbLog('database name', getDatabaseName());
   try {
-    const scores = await fetchTopScores(1);
-    lbLog('startup DB check OK', { sampleRows: scores?.length ?? 0 });
+    await pingDatabase();
+    lbLog('startup DB check OK');
   } catch (err) {
     lbError('startup DB check FAILED:', err.message);
   }
