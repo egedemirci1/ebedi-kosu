@@ -1,9 +1,12 @@
 import 'dotenv/config';
+import dns from 'dns';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { closePool, fetchTopScores, insertScore, isDbConfigured, pingDatabase, getDatabaseName } from './db.js';
 import { LB_DEBUG, lbError, lbLog, maskDatabaseUrl } from './debug.js';
+
+dns.setDefaultResultOrder('ipv4first');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, '..', 'dist');

@@ -127,7 +127,7 @@ export class Game {
 
   async refreshLeaderboard() {
     if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard');
-    const scores = await fetchTopScores();
+    const { scores, error } = await fetchTopScores();
     const list = this.ui.leaderboardList;
     if (!list) {
       if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — #leaderboard-list missing');
@@ -137,6 +137,11 @@ export class Game {
     list.innerHTML = '';
     this.ui.leaderboardEmpty?.classList.add('hidden');
     this.ui.leaderboardError?.classList.add('hidden');
+
+    if (error) {
+      this.ui.leaderboardError?.classList.remove('hidden');
+      return;
+    }
 
     if (scores.length === 0) {
       if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — empty list');
@@ -150,7 +155,12 @@ export class Game {
       const item = document.createElement('li');
       const rank = document.createElement('span');
       rank.className = 'rank';
-      rank.textContent = `${row.rank}.`;
+      if (row.rank <= 3) {
+        rank.classList.add('rank-medal', `rank-medal-${row.rank}`);
+        rank.textContent = String(row.rank);
+      } else {
+        rank.textContent = `${row.rank}.`;
+      }
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = row.player_name;

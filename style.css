@@ -176,6 +176,10 @@ canvas {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .overlay h1 {
   font-size: clamp(2rem, 6vw, 3.5rem);
   font-weight: 800;
@@ -276,17 +280,19 @@ canvas {
   letter-spacing: 2px;
   color: #8888aa;
   margin-bottom: 10px;
+  text-align: center;
 }
 
 .leaderboard-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .leaderboard-list li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 0.85rem;
@@ -295,7 +301,43 @@ canvas {
 
 .leaderboard-list .rank {
   color: #8888aa;
-  min-width: 1.4em;
+  min-width: 1.55em;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.leaderboard-list .rank-medal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55em;
+  height: 1.55em;
+  min-width: 1.55em;
+  border-radius: 50%;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.leaderboard-list .rank-medal-1 {
+  color: #3d2a00;
+  background: linear-gradient(145deg, #ffe066, #ffd700 45%, #c9a012);
+  border: 1px solid rgba(255, 220, 80, 0.85);
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.35);
+}
+
+.leaderboard-list .rank-medal-2 {
+  color: #2a2a32;
+  background: linear-gradient(145deg, #f4f4f8, #c8c8d4 50%, #9898a8);
+  border: 1px solid rgba(220, 220, 235, 0.75);
+  box-shadow: 0 0 8px rgba(192, 192, 210, 0.3);
+}
+
+.leaderboard-list .rank-medal-3 {
+  color: #2a1808;
+  background: linear-gradient(145deg, #e8a86a, #cd7f32 50%, #a86428);
+  border: 1px solid rgba(205, 127, 50, 0.75);
+  box-shadow: 0 0 8px rgba(205, 127, 50, 0.28);
 }
 
 .leaderboard-list .name {

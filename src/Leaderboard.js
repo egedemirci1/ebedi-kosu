@@ -10,11 +10,14 @@ export async function fetchTopScores() {
     const res = await fetch('/api/scores/top');
     const data = await res.json().catch(() => ({}));
     lbLog('fetchTopScores ←', { status: res.status, ok: res.ok, data });
-    if (!res.ok) return [];
-    return Array.isArray(data.scores) ? data.scores : [];
+    if (!res.ok) return { scores: [], error: true };
+    return {
+      scores: Array.isArray(data.scores) ? data.scores : [],
+      error: false,
+    };
   } catch (err) {
     lbLog('fetchTopScores FAILED', err);
-    return [];
+    return { scores: [], error: true };
   }
 }
 
