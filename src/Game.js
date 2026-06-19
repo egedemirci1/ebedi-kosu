@@ -384,7 +384,7 @@ export class Game {
         } else if (dy < -40) {
           this.tryJump();
         } else if (dy > 40) {
-          this.player.fastFall();
+          if (!this.player.startSlide()) this.player.fastFall();
         }
       },
       { passive: true }
@@ -421,6 +421,9 @@ export class Game {
     this.player.onGround = true;
     this.player.isFalling = false;
     this.player.vy = 0;
+    this.player.isSliding = false;
+    this.player.slideTimer = 0;
+    this.player.slideBlend = 0;
     this.player.resetVisuals();
   }
 
@@ -560,8 +563,8 @@ export class Game {
       this.obstacles.update(dt, runSpeed, this.distance);
       this.pickups.update(dt, runSpeed);
       this.coins.update(dt, runSpeed);
-      const fastFall = this.keys['ArrowDown'] || this.keys['KeyS'];
-      this.player.update(dt, !this.gaps.isGapAt(0), fastFall);
+      const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
+      this.player.update(dt, !this.gaps.isGapAt(0), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
       // Chase/danger ignores run speed — only hits (lunge) and stumbling pull the creature in.
       this.creature.update(dt, this.player.x, this.player.isStumbling);

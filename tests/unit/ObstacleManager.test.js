@@ -4,8 +4,8 @@ import { LANES } from '../../src/scene.js';
 import { createScene, insertGap, insertObstacle } from '../helpers/fixtures.js';
 import { GapManager } from '../../src/GapManager.js';
 
-function makePlayer({ x = LANES[1], y = 0, laneIndex = 1 } = {}) {
-  return { x, y, laneIndex };
+function makePlayer({ x = LANES[1], y = 0, laneIndex = 1, isSliding = false } = {}) {
+  return { x, y, laneIndex, isSliding };
 }
 
 describe('ObstacleManager', () => {
@@ -53,6 +53,16 @@ describe('ObstacleManager', () => {
     it('rejects collision when lateral drift exceeds lane tolerance', () => {
       insertObstacle(obstacles, 'barrier', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ x: LANES[1] + 0.86 }))).toBeNull();
+    });
+
+    it('passes under overhead obstacles while sliding', () => {
+      insertObstacle(obstacles, 'overhead', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ isSliding: true }))).toBeNull();
+    });
+
+    it('hits overhead obstacles while standing', () => {
+      insertObstacle(obstacles, 'overhead', 1, 0);
+      expect(obstacles.checkCollision(makePlayer())).not.toBeNull();
     });
   });
 

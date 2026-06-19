@@ -60,6 +60,40 @@ describe('Player', () => {
     });
   });
 
+  describe('slide', () => {
+    it('enters slide while holding down on the ground', () => {
+      player.update(0.016, true, true);
+      expect(player.isSliding).toBe(true);
+    });
+
+    it('does not slide while airborne', () => {
+      player.jump(false);
+      player.update(0.016, true, true);
+      expect(player.isSliding).toBe(false);
+    });
+
+    it('startSlide keeps sliding until timer expires without holding down', () => {
+      player.startSlide(0.2);
+      expect(player.isSliding).toBe(true);
+      player.update(0.05, true, false);
+      expect(player.isSliding).toBe(true);
+      player.update(0.2, true, false);
+      expect(player.isSliding).toBe(false);
+    });
+
+    it('cancels slide when jumping', () => {
+      player.update(0.016, true, true);
+      expect(player.isSliding).toBe(true);
+      player.jump(false);
+      expect(player.isSliding).toBe(false);
+    });
+
+    it('uses a shorter hitbox while sliding', () => {
+      player.isSliding = true;
+      expect(player.hitbox.height).toBeLessThan(1);
+    });
+  });
+
   describe('lane walls', () => {
     it('returns wall when moving left from leftmost lane', () => {
       player.laneIndex = 0;

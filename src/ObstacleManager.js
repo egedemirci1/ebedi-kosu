@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LANES } from './scene.js';
+import { LANES, LANE_WIDTH } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
 
 const OBSTACLE_DEFS = {
-  low: { height: 1.05, meshY: 0.525, jumpable: true },
-  barrier: { height: 1.2, meshY: 0.6, jumpable: true },
-  tall: { height: 3.4, meshY: 1.7, jumpable: false },
+  low: { height: 1.05, meshY: 0.525, jumpable: true, slideUnder: false },
+  barrier: { height: 1.2, meshY: 0.6, jumpable: true, slideUnder: false },
+  tall: { height: 3.4, meshY: 1.7, jumpable: false, slideUnder: false },
+  overhead: { height: 0.4, meshY: 2.05, jumpable: false, slideUnder: true },
 };
 
 const OBSTACLE_TYPES = Object.keys(OBSTACLE_DEFS);
@@ -39,6 +40,10 @@ function buildSpikeClusterGeo(height, spikes) {
 function buildObstacleGeometry(type, def) {
   if (type === 'barrier') {
     return new THREE.BoxGeometry(1.6, def.height, 0.5);
+  }
+
+  if (type === 'overhead') {
+    return new THREE.BoxGeometry(LANE_WIDTH + 0.35, def.height, 0.55);
   }
 
   if (type === 'low') {
@@ -92,6 +97,13 @@ export class ObstacleManager {
         emissive: 0x440011,
         emissiveIntensity: 0.5,
         roughness: 0.5,
+        fog: false,
+      }),
+      overhead: new THREE.MeshStandardMaterial({
+        color: 0xff88cc,
+        emissive: 0x440022,
+        emissiveIntensity: 0.45,
+        roughness: 0.45,
         fog: false,
       }),
     };
@@ -195,6 +207,7 @@ export class ObstacleManager {
       entry.slot = slot;
       entry.topY = def.meshY + def.height / 2;
       entry.jumpable = def.jumpable;
+      entry.slideUnder = def.slideUnder ?? false;
       entry.active = true;
     } else {
       entry = {
@@ -204,6 +217,7 @@ export class ObstacleManager {
         slot,
         topY: def.meshY + def.height / 2,
         jumpable: def.jumpable,
+        slideUnder: def.slideUnder ?? false,
         active: true,
       };
     }
@@ -267,6 +281,11 @@ export class ObstacleManager {
       if (!obs.active) continue;
       if (Math.abs(obs.z) > COLLISION_Z) continue;
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
+
+      if (obs.slideUnder) {
+        if (player.isSliding) continue;
+        return obs;
+      }
 
       if (obs.jumpable && feetY >= obs.topY - CLEARANCE) continue;
 

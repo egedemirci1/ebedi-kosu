@@ -9,6 +9,12 @@ const VOID_DROP_SPEED = 6;
 const JUMP_VY = 9.5;
 const SUPER_JUMP_VY = 13.8;
 const FAST_FALL_SPEED = 20;
+export const SLIDE_DURATION = 0.8;
+const STAND_BODY_Y = 1.05;
+const STAND_HEAD_Y = 1.75;
+const SLIDE_BODY_Y = 0.42;
+const SLIDE_HEAD_Y = 0.58;
+const SLIDE_BODY_ROT_X = 1.35;
 const TRAIL_COUNT = 3;
 const TRAIL_SPACING = 0.35;
 
@@ -33,6 +39,9 @@ export class Player {
     this.runPhase = 0;
     this.trailSpawnTimer = 0;
     this.isGhostVisual = false;
+    this.isSliding = false;
+    this.slideTimer = 0;
+    this.slideBlend = 0;
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x44aaff,
@@ -121,9 +130,28 @@ export class Player {
 
   jump(superJump = false) {
     if (!this.onGround) return false;
+    this.isSliding = false;
+    this.slideTimer = 0;
     this.onGround = false;
     this.isJumping = true;
     this.vy = superJump ? SUPER_JUMP_VY : JUMP_VY;
+    return true;
+  }
+
+  canSlide() {
+    return (
+      this.onGround &&
+      !this.isFalling &&
+      !this.isStumbling &&
+      !this.isJumping &&
+      this.wallBounceTimer <= 0
+    );
+  }
+
+  startSlide(duration = SLIDE_DURATION) {
+    if (!this.canSlide()) return false;
+    this.isSliding = true;
+    this.slideTimer = duration;
     return true;
   }
 
@@ -155,6 +183,8 @@ export class Player {
   }
 
   stumble(duration = 0.6, side = 0) {
+    this.isSliding = false;
+    this.slideTimer = 0;
     this.isStumbling = true;
     this.stumbleTimer = duration;
     this.stumbleSide = side;
@@ -170,11 +200,20 @@ export class Player {
   resetVisuals() {
     this.body.position.x = 0;
     this.head.position.x = 0;
+    this.head.position.z = 0;
     this.body.rotation.x = 0;
     this.head.rotation.x = 0;
     this.body.rotation.z = 0;
-    this.body.position.y = 1.05;
-    this.head.position.y = 1.75;
+    this.body.scale.set(1, 1, 1);
+    this.body.position.y = STAND_BODY_Y;
+    this.head.position.y = STAND_HEAD_Y;
+    this.glow.position.y = 1.2;
+    this.glow.position.z = 0;
+    this.glow.scale.set(1, 1, 1);
+    this.glow.visible = true;
+    this.isSliding = false;
+    this.slideTimer = 0;
+    this.slideBlend = 0;
     this.setGhostVisual(false);
     this.resetTrails();
   }
@@ -189,7 +228,7 @@ export class Player {
   }
 
   updateTrails(dt) {
-    const running = this.onGround && !this.isFalling && !this.isStumbling;
+    const running = this.onGround && !this.isFalling && !this.isStumbling && !this.isSliding;
 
     if (running) {
       this.trailSpawnTimer += dt;
@@ -237,6 +276,16 @@ export class Player {
   }
 
   get hitbox() {
+    if (this.isSliding || this.slideBlend > 0.35) {
+      return {
+        x: this.x,
+        y: this.y + 0.35,
+        z: 0,
+        radius: 0.42,
+        height: 0.62,
+      };
+    }
+
     return {
       x: this.x,
       y: this.y + 0.9,
@@ -246,7 +295,27 @@ export class Player {
     };
   }
 
-  update(dt, hasFloor = true, wantsFastFall = false) {
+  updateSlideState(dt, wantsDown, hasFloor) {
+    if (this.slideTimer > 0) {
+      this.slideTimer -= dt;
+      if (this.slideTimer <= 0) this.slideTimer = 0;
+    }
+
+    const canGroundSlide = this.canSlide() && hasFloor;
+
+    if (wantsDown && canGroundSlide) {
+      this.isSliding = true;
+    } else if (this.slideTimer <= 0) {
+      this.isSliding = false;
+    }
+
+    if (!hasFloor || this.isFalling || this.isStumbling) {
+      this.isSliding = false;
+      this.slideTimer = 0;
+    }
+  }
+
+  update(dt, hasFloor = true, wantsDown = false) {
     if (this.wallBounceTimer > 0) {
       this.wallBounceTimer -= dt;
       const t = 1 - Math.max(0, this.wallBounceTimer) / WALL_BUMP_DURATION;
@@ -267,12 +336,15 @@ export class Player {
       this.y = 0;
       this.vy = 0;
       this.isJumping = false;
+      this.updateSlideState(dt, wantsDown, hasFloor);
     } else {
       this.onGround = false;
+      this.isSliding = false;
+      this.slideTimer = 0;
       const gravity = this.isFalling ? VOID_GRAVITY : GRAVITY;
       this.vy -= gravity * dt;
 
-      if (wantsFastFall && !this.isFalling) {
+      if (wantsDown && !this.isFalling) {
         this.vy = Math.min(this.vy, -FAST_FALL_SPEED);
       }
 
@@ -304,15 +376,33 @@ export class Player {
         ? Math.sin((1 - this.wallBounceTimer / WALL_BUMP_DURATION) * Math.PI) * WALL_BUMP_AMOUNT
         : 0;
 
-    this.runPhase += dt * (this.isStumbling ? 4 : 12);
-    const bob = Math.sin(this.runPhase) * (this.isStumbling ? 0.02 : 0.08);
+    this.runPhase += dt * (this.isStumbling ? 4 : this.isSliding ? 16 : 12);
+    const bob = this.isSliding ? 0 : Math.sin(this.runPhase) * (this.isStumbling ? 0.02 : 0.08);
     const fallTuck = this.isFalling ? Math.min(0.55, Math.max(0, -this.y * 0.25)) : 0;
-    const bodyY = 1.05 + bob + (this.isStumbling ? -0.15 : 0) - fallTuck;
-    const headY = 1.75 + bob + (this.isStumbling ? -0.15 : 0) - fallTuck * 1.1;
+
+    const targetSlide = this.isSliding ? 1 : 0;
+    this.slideBlend += (targetSlide - this.slideBlend) * Math.min(1, dt * 16);
+    const s = this.slideBlend;
+
+    const bodyY = THREE.MathUtils.lerp(STAND_BODY_Y, SLIDE_BODY_Y, s) + bob + (this.isStumbling ? -0.15 : 0) - fallTuck;
+    const headY = THREE.MathUtils.lerp(STAND_HEAD_Y, SLIDE_HEAD_Y, s) + bob + (this.isStumbling ? -0.15 : 0) - fallTuck * 1.1;
     this.body.position.y = bodyY;
     this.head.position.y = headY;
+    this.head.position.z = THREE.MathUtils.lerp(0, 0.28, s);
     this.body.position.x = this.wallBounceSide * wallPush * 0.12;
     this.head.position.x = this.wallBounceSide * wallPush * 0.08;
+    this.body.scale.set(
+      THREE.MathUtils.lerp(1, 1.08, s),
+      THREE.MathUtils.lerp(1, 0.72, s),
+      THREE.MathUtils.lerp(1, 1.18, s)
+    );
+
+    const baseGlowOpacity = this.isGhostVisual ? 0.65 : 0.45;
+    this.glow.position.y = THREE.MathUtils.lerp(1.2, bodyY + 0.08, s);
+    this.glow.position.z = THREE.MathUtils.lerp(0, 0.12, s);
+    this.glow.scale.setScalar(THREE.MathUtils.lerp(1, 0.4, s));
+    this.glow.material.opacity = baseGlowOpacity * (1 - s);
+    this.glow.visible = s < 0.92;
 
     if (this.isStumbling) {
       const wobble = Math.sin(this.runPhase * 2) * 0.1;
@@ -327,14 +417,14 @@ export class Player {
       this.body.position.x *= 0.85;
       this.head.position.x *= 0.85;
     } else {
+      this.body.rotation.x = THREE.MathUtils.lerp(this.body.rotation.x, SLIDE_BODY_ROT_X * s, Math.min(1, dt * 14));
+      this.head.rotation.x = this.body.rotation.x * 0.35;
       this.body.rotation.z *= 0.85;
-      this.body.rotation.x *= 0.88;
-      this.head.rotation.x *= 0.88;
       this.body.position.x *= 0.85;
       this.head.position.x *= 0.85;
     }
 
-    this.group.position.set(this.x, this.y, 0);
+    this.group.position.set(this.x, this.y, -s * 0.22);
     this.updateTrails(dt);
   }
 }
