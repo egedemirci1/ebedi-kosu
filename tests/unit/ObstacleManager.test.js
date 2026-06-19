@@ -4,13 +4,21 @@ import { LANES } from '../../src/scene.js';
 import { createScene, insertGap, insertObstacle } from '../helpers/fixtures.js';
 import { GapManager } from '../../src/GapManager.js';
 
-function makePlayer({ x = LANES[1], y = 0, laneIndex = 1, isSliding = false, slideBlend = 0 } = {}) {
+function makePlayer({
+  x = LANES[1],
+  y = 0,
+  laneIndex = 1,
+  isSliding = false,
+  slideBlend = 0,
+  canVaultGate = false,
+} = {}) {
   return {
     x,
     y,
     laneIndex,
     isSliding,
     slideBlend,
+    canVaultGate,
     get isSlideActive() {
       return isSliding || slideBlend > 0.45;
     },
@@ -80,9 +88,19 @@ describe('ObstacleManager', () => {
       expect(obstacles.checkCollision(makePlayer())).not.toBeNull();
     });
 
-    it('hits gate obstacles even during a high jump (no vaulting over)', () => {
+    it('hits gate obstacles during a normal jump that stays below the beam', () => {
       insertObstacle(obstacles, 'gate', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ y: 1.15 }))).not.toBeNull();
+    });
+
+    it('passes over gate obstacles when feet clear the beam top', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ y: 1.6 }))).toBeNull();
+    });
+
+    it('passes gate obstacles while super jump vault is active', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ y: 0.4, canVaultGate: true }))).toBeNull();
     });
 
     it('hits gate obstacles during a low hop', () => {

@@ -9,7 +9,7 @@ const OBSTACLE_DEFS = {
   low: { height: 1.05, meshY: 0.525, jumpable: true, slideUnder: false },
   barrier: { height: 1.2, meshY: 0.6, jumpable: true, slideUnder: false },
   tall: { height: 3.4, meshY: 1.7, jumpable: false, slideUnder: false },
-  /** Alçak kapı — üstü dolu, alttan eğilerek geç; zıplama çarpar. */
+  /** Alçak kapı — alttan kay, üstten süper zıpla veya yüksek zıpla. */
   gate: {
     height: 0.42,
     clearance: 1.16,
@@ -659,7 +659,10 @@ export class ObstacleManager {
 
       if (obs.slideUnder) {
         const beamBottom = obs.beamBottom ?? 1.16;
+        const beamTop = obs.topY ?? beamBottom + 0.58;
         if (slideActive && playerTop <= beamBottom - CLEARANCE) continue;
+        if (playerBottom >= beamTop - CLEARANCE) continue;
+        if (player.canVaultGate) continue;
         return obs;
       }
 

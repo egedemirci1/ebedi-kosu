@@ -667,6 +667,7 @@ export class Game {
     this.player.isSliding = false;
     this.player.slideTimer = 0;
     this.player.slideBlend = 0;
+    this.player.canVaultGate = false;
     this.player.resetVisuals();
   }
 
@@ -877,6 +878,11 @@ export class Game {
         this.gameOver('fell');
         return;
       }
+
+      this.player.canVaultGate =
+        this.boosters.isSuperJumpActive() &&
+        !this.player.onGround &&
+        !this.player.isFalling;
 
       const hit = this.obstacles.checkCollision(this.player, runSpeed * dt);
       if (hit && !this.boosters.isGhostActive()) {

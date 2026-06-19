@@ -49,6 +49,7 @@ export class Player {
     this.isSliding = false;
     this.slideTimer = 0;
     this.slideBlend = 0;
+    this.canVaultGate = false;
 
     const bodyMat = createSurfaceMaterial({
       color: 0x44aaff,
