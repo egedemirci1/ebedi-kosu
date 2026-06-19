@@ -1,27 +1,51 @@
-/** Matches Game.js speed model (base 14, +0.008/m, max 1.3× speed booster). */
+/** Matches Game.js run speed — soft cap with diminishing acceleration. */
 export const BASE_RUN_SPEED = 14;
-export const RUN_SPEED_GROWTH = 0.008;
+export const MAX_RUN_SPEED = 26;
+/** Distance scale: larger = slower approach to max speed (early game stays familiar). */
+export const SPEED_RAMP_DISTANCE = 1400;
 export const MAX_SPEED_MULTIPLIER = 1.3;
 export const RUN_PHYSICS_TOLERANCE = 1.2;
 
-const DISTANCE_SCALE = BASE_RUN_SPEED / RUN_SPEED_GROWTH;
-const GROWTH_TERM = MAX_SPEED_MULTIPLIER * RUN_SPEED_GROWTH;
+const SPEED_HEADROOM = MAX_RUN_SPEED - BASE_RUN_SPEED;
 
-export function maxPlausibleDistance(activeMs) {
+/** Run speed (m/s) at a given distance — growth slows as you approach MAX_RUN_SPEED. */
+export function runSpeedAtDistance(distanceMeters) {
+  const d = Math.max(0, Number(distanceMeters) || 0);
+  return BASE_RUN_SPEED + SPEED_HEADROOM * (1 - Math.exp(-d / SPEED_RAMP_DISTANCE));
+}
+
+function integrateDistance(activeMs, speedMultiplier = MAX_SPEED_MULTIPLIER) {
   const seconds = Math.max(0, Number(activeMs) || 0) / 1000;
   if (seconds <= 0) return 0;
 
-  const distance = DISTANCE_SCALE * (Math.exp(GROWTH_TERM * seconds) - 1) * RUN_PHYSICS_TOLERANCE;
-  return Math.floor(distance);
+  let distance = 0;
+  let t = 0;
+  const dt = 0.025;
+  const mult = speedMultiplier * RUN_PHYSICS_TOLERANCE;
+
+  while (t < seconds) {
+    const step = Math.min(dt, seconds - t);
+    distance += runSpeedAtDistance(distance) * mult * step;
+    t += step;
+  }
+
+  return distance;
+}
+
+export function maxPlausibleDistance(activeMs) {
+  return Math.floor(integrateDistance(activeMs));
 }
 
 export function minActiveMsForDistance(distance) {
-  const d = Math.max(0, Math.floor(Number(distance) || 0));
-  if (d <= 0) return 0;
+  const target = Math.max(0, Math.floor(Number(distance) || 0));
+  if (target <= 0) return 0;
 
-  const ratio = 1 + d / (DISTANCE_SCALE * RUN_PHYSICS_TOLERANCE);
-  if (ratio <= 1) return 0;
-
-  const seconds = Math.log(ratio) / GROWTH_TERM;
-  return Math.ceil(seconds * 1000);
+  let lo = 0;
+  let hi = 7200000;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (maxPlausibleDistance(mid) < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }

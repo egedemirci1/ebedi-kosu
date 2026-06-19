@@ -2,23 +2,29 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANES, LANE_WIDTH } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
+import { GRAPHICS } from './graphicsProfile.js';
+import { createSurfaceMaterial, instancedFrustumCulled } from './surfaceMaterial.js';
 
 const OBSTACLE_DEFS = {
   low: { height: 1.05, meshY: 0.525, jumpable: true, slideUnder: false },
   barrier: { height: 1.2, meshY: 0.6, jumpable: true, slideUnder: false },
   tall: { height: 3.4, meshY: 1.7, jumpable: false, slideUnder: false },
-  overhead: {
-    height: 0.32,
-    clearance: 1.22,
+  /** Alçak kapı — üstü dolu, alttan eğilerek geç; zıplama çarpar. */
+  gate: {
+    height: 0.42,
+    clearance: 1.16,
     meshY: 0,
     jumpable: false,
     slideUnder: true,
-    beamSpan: LANE_WIDTH + 0.15,
+    beamSpan: LANE_WIDTH + 0.18,
   },
 };
 
 const OBSTACLE_TYPES = Object.keys(OBSTACLE_DEFS);
 const SPIKE_TYPES = new Set(['low', 'tall']);
+const SLIDE_UNDER_TYPES = new Set(
+  OBSTACLE_TYPES.filter((type) => OBSTACLE_DEFS[type].slideUnder)
+);
 const MAX_PER_TYPE = 24;
 const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
@@ -65,6 +71,7 @@ function createStoneTexture(variant = 'barrier') {
     low: { a: '#686098', b: '#8278b0', c: '#9c94c8', d: '#504870' },
     tall: { a: '#605888', b: '#7a70a0', c: '#948cb8', d: '#484068' },
     overhead: { a: '#1a1626', b: '#2e2840', c: '#464060', d: '#100e18' },
+    gate: { a: '#1a1626', b: '#2e2840', c: '#464060', d: '#100e18' },
     spikeBase: { a: '#282238', b: '#383050', c: '#484060', d: '#181420' },
   };
   const p = palettes[variant] ?? palettes.barrier;
@@ -143,7 +150,7 @@ function createStoneTexture(variant = 'barrier') {
     ctx.fill();
   }
 
-  if (variant === 'overhead') {
+  if (variant === 'gate' || variant === 'overhead') {
     const glow = ctx.createLinearGradient(0, 200, 0, 256);
     glow.addColorStop(0, 'rgba(140, 100, 220, 0)');
     glow.addColorStop(0.55, 'rgba(160, 120, 255, 0.35)');
@@ -199,10 +206,11 @@ function createStoneMaterial(variant) {
     tall: { color: 0x8877cc, intensity: 0.18, tint: 0xe0daf8, roughness: 0.72 },
     spikeBase: { color: 0x443355, intensity: 0.06, tint: 0xb0a8c8, roughness: 0.88 },
     overhead: { color: 0x554488, intensity: 0.14, tint: 0xffffff, roughness: 0.9 },
+    gate: { color: 0x665599, intensity: 0.18, tint: 0xf4f0ff, roughness: 0.88 },
   };
   const em = emissiveByVariant[variant] ?? emissiveByVariant.barrier;
 
-  return new THREE.MeshStandardMaterial({
+  return createSurfaceMaterial({
     map: createStoneTexture(variant),
     color: em.tint,
     emissive: em.color,
@@ -277,23 +285,23 @@ function buildBarrierGeometry(def) {
   return merged;
 }
 
-function buildOverheadGateGeometry(def) {
-  const beamW = def.beamSpan ?? LANE_WIDTH + 0.15;
+function buildGateGeometry(def) {
+  const beamW = def.beamSpan ?? LANE_WIDTH + 0.18;
   const beamH = def.height;
-  const beamBottom = def.clearance ?? 1.22;
+  const beamBottom = def.clearance ?? 1.16;
   const beamY = beamBottom + beamH / 2;
   const postH = beamBottom;
-  const postW = 0.22;
-  const postD = 0.52;
+  const postW = 0.24;
+  const postD = 0.56;
   const parts = [];
 
-  const sill = new THREE.BoxGeometry(beamW, 0.1, 0.48);
-  sill.translate(0, 0.05, 0);
+  const sill = new THREE.BoxGeometry(beamW, 0.12, 0.52);
+  sill.translate(0, 0.06, 0);
   parts.push(sill);
 
   for (const x of [-beamW / 2 + postW / 2, beamW / 2 - postW / 2]) {
-    const foot = new THREE.BoxGeometry(postW * 1.7, 0.08, postD * 1.15);
-    foot.translate(x, 0.04, 0);
+    const foot = new THREE.BoxGeometry(postW * 1.8, 0.1, postD * 1.2);
+    foot.translate(x, 0.05, 0);
     parts.push(foot);
 
     const post = new THREE.BoxGeometry(postW, postH, postD);
@@ -301,16 +309,16 @@ function buildOverheadGateGeometry(def) {
     parts.push(post);
   }
 
-  const beam = new THREE.BoxGeometry(beamW, beamH, 0.58);
+  const beam = new THREE.BoxGeometry(beamW, beamH, 0.62);
   beam.translate(0, beamY, 0);
   parts.push(beam);
 
-  const keystone = new THREE.BoxGeometry(0.42, 0.24, 0.64);
-  keystone.translate(0, beamY + beamH / 2 + 0.1, 0);
-  parts.push(keystone);
+  const cap = new THREE.BoxGeometry(beamW * 0.96, 0.16, 0.66);
+  cap.translate(0, beamY + beamH / 2 + 0.06, 0);
+  parts.push(cap);
 
-  const lip = new THREE.BoxGeometry(beamW * 0.94, 0.1, 0.62);
-  lip.translate(0, beamBottom - 0.04, 0);
+  const lip = new THREE.BoxGeometry(beamW * 0.92, 0.12, 0.64);
+  lip.translate(0, beamBottom - 0.05, 0);
   parts.push(lip);
 
   const merged = mergeGeometries(parts, false);
@@ -319,14 +327,14 @@ function buildOverheadGateGeometry(def) {
 }
 
 function obstacleTopY(type, def) {
-  if (type === 'overhead') {
-    return (def.clearance ?? 1.22) + def.height;
+  if (SLIDE_UNDER_TYPES.has(type)) {
+    return (def.clearance ?? 1.16) + def.height + 0.16;
   }
   return def.meshY + def.height / 2;
 }
 
 function obstacleBeamBottom(type, def) {
-  if (type === 'overhead') return def.clearance ?? 1.22;
+  if (SLIDE_UNDER_TYPES.has(type)) return def.clearance ?? 1.16;
   return null;
 }
 
@@ -335,8 +343,8 @@ function buildObstacleGeometry(type, def) {
     return buildBarrierGeometry(def);
   }
 
-  if (type === 'overhead') {
-    return buildOverheadGateGeometry(def);
+  if (SLIDE_UNDER_TYPES.has(type)) {
+    return buildGateGeometry(def);
   }
 
   if (type === 'low') {
@@ -394,8 +402,8 @@ export class ObstacleManager {
         this.materials[type],
         MAX_PER_TYPE
       );
-      mesh.castShadow = true;
-      mesh.frustumCulled = false;
+      mesh.castShadow = GRAPHICS.shadows;
+      mesh.frustumCulled = instancedFrustumCulled();
 
       if (SPIKE_TYPES.has(type)) {
         const baseMesh = new THREE.InstancedMesh(
@@ -403,8 +411,8 @@ export class ObstacleManager {
           this.baseMaterial,
           MAX_PER_TYPE
         );
-        baseMesh.castShadow = true;
-        baseMesh.frustumCulled = false;
+        baseMesh.castShadow = GRAPHICS.shadows;
+        baseMesh.frustumCulled = instancedFrustumCulled();
         scene.add(baseMesh);
         this.baseInstancedMeshes[type] = baseMesh;
       }
@@ -484,7 +492,7 @@ export class ObstacleManager {
 
   setInstanceMatrix(entry) {
     const def = OBSTACLE_DEFS[entry.type];
-    const anchorY = entry.type === 'overhead' ? 0 : def.meshY;
+    const anchorY = SLIDE_UNDER_TYPES.has(entry.type) ? 0 : def.meshY;
     TEMP_POS.set(LANES[entry.lane], anchorY, entry.z);
     TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
     const mesh = this.instancedMeshes[entry.type];
@@ -561,19 +569,19 @@ export class ObstacleManager {
     }
 
     if (this.difficulty < 0.35) {
-      if (r < 0.14) return 'overhead';
+      if (r < 0.2) return 'gate';
       if (r < 0.62) return 'barrier';
       return 'low';
     }
 
     if (this.difficulty < 0.6) {
-      if (r < 0.2) return 'overhead';
+      if (r < 0.26) return 'gate';
       if (r < 0.48) return 'barrier';
       if (r < 0.78) return 'low';
       return 'tall';
     }
 
-    if (r < 0.24) return 'overhead';
+    if (r < 0.28) return 'gate';
     if (r < 0.5) return 'barrier';
     if (r < 0.74) return 'low';
     return 'tall';
@@ -611,9 +619,8 @@ export class ObstacleManager {
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
 
       if (obs.slideUnder) {
-        const beamBottom = obs.beamBottom ?? 1.22;
+        const beamBottom = obs.beamBottom ?? 1.16;
         if (slideActive && playerTop <= beamBottom - CLEARANCE) continue;
-        if (playerBottom >= beamBottom - CLEARANCE) continue;
         return obs;
       }
 

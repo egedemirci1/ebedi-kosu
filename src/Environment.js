@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GRAPHICS } from './graphicsProfile.js';
+import { RECYCLE_AFTER_Z } from './Track.js';
 
 function createSkyTexture(stops, horizonGlow) {
   const canvas = document.createElement('canvas');
@@ -89,223 +91,239 @@ function createBrightStars() {
   return { group, stars };
 }
 
-const MOUNTAIN_CONE = new THREE.ConeGeometry(1, 1, 4);
-const MOUNTAIN_MAT = new THREE.MeshBasicMaterial({
-  color: 0x221838,
-  fog: true,
-});
+// --- Terrain (single system: fixed slots, seeded variation, no overlap) ---
 
-const MOUNTAIN_FAR_MAT = new THREE.MeshBasicMaterial({
-  color: 0x3a2850,
-  fog: false,
-});
+const PEAK_GEO = new THREE.ConeGeometry(1, 1, 4);
+PEAK_GEO.rotateY(Math.PI / 4);
 
-const VALLEY_MAT = new THREE.MeshBasicMaterial({
-  color: 0x4a335f,
-  fog: true,
-});
+const ROCK_GEO = new THREE.BoxGeometry(1, 1, 1);
+ROCK_GEO.rotateY(Math.PI / 4);
 
-const VALLEY_ACCENT_MAT = new THREE.MeshBasicMaterial({
-  color: 0x6a4668,
-  fog: true,
-});
+/** Strip başına farklı silüet + renk — seed ile seçilir */
+const TERRAIN_PALETTES = [
+  { near: 0x261a38, mid: 0x2e2248, far: 0x3a2e58 },
+  { near: 0x2a1834, mid: 0x34204c, far: 0x423062 },
+  { near: 0x1e2236, mid: 0x2a3050, far: 0x364068 },
+  { near: 0x281830, mid: 0x322248, far: 0x403058 },
+  { near: 0x222038, mid: 0x2c2850, far: 0x383860 },
+  { near: 0x2c1a32, mid: 0x36244a, far: 0x44305a },
+];
 
-const VALLEY_FAR_MAT = new THREE.MeshBasicMaterial({
-  color: 0x2f213f,
-  transparent: true,
-  opacity: 0.62,
-  fog: true,
-  depthWrite: false,
-});
-const VALLEY_BASE_FOG_MAT = new THREE.MeshBasicMaterial({
-  color: 0x3a2a4a,
-  transparent: true,
-  opacity: 0.32,
-  fog: true,
-  depthWrite: false,
-});
-const VALLEY_WALL_MAT = new THREE.MeshBasicMaterial({
-  color: 0x22172f,
-  transparent: true,
-  opacity: 0.72,
-  fog: true,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-});
-const VALLEY_DEEP_FOG_MAT = new THREE.MeshBasicMaterial({
-  color: 0x2a1d3a,
-  transparent: true,
-  opacity: 0.26,
-  fog: true,
-  depthWrite: false,
-});
+const _terrainMaterialCache = new Map();
 
-const VALLEY_BOX = new THREE.BoxGeometry(1, 1, 1);
-const VALLEY_CENTER_CLEAR = 12;
-const VALLEY_SIDE_WALL_GEO = new THREE.PlaneGeometry(42, 30);
-const VALLEY_FOG_BED_GEO = new THREE.PlaneGeometry(34, 28);
+function terrainMaterialsForSeed(seed) {
+  const palette = TERRAIN_PALETTES[seed % TERRAIN_PALETTES.length];
+  const key = `${palette.near}-${palette.mid}-${palette.far}`;
+  if (_terrainMaterialCache.has(key)) return _terrainMaterialCache.get(key);
 
-const RECYCLE_Z = 12;
-const STRIP_BACKOFF = 8;
+  const mats = {
+    near: new THREE.MeshBasicMaterial({ color: palette.near, fog: true }),
+    mid: new THREE.MeshBasicMaterial({ color: palette.mid, fog: true }),
+    far: new THREE.MeshBasicMaterial({ color: palette.far, fog: true }),
+  };
+  _terrainMaterialCache.set(key, mats);
+  return mats;
+}
 
-function buildMountainStripGeo() {
-  const parts = [];
-  const count = 5 + Math.floor(Math.random() * 4);
+const STRIP_SPACING = 42;
+const STRIP_BACKOFF = 6;
+/** Foremost baked peak local Z (mid-layer) — strip recycles only after this passes the camera. */
+const TERRAIN_LOCAL_Z_MIN = -20;
+const TERRAIN_RECYCLE_Z = RECYCLE_AFTER_Z - TERRAIN_LOCAL_Z_MIN;
+const TERRAIN_POOL = 9;
 
-  for (let i = 0; i < count; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const width = 4 + Math.random() * 8;
-    const height = 3 + Math.random() * 10;
-    const geo = MOUNTAIN_CONE.clone();
-    geo.scale(width, height, width);
-    const matrix = new THREE.Matrix4().makeRotationY(Math.random() * Math.PI);
-    matrix.setPosition(
-      side * (14 + Math.random() * 10),
-      height * 0.5 - 0.5,
-      (Math.random() - 0.5) * 12
-    );
-    geo.applyMatrix4(matrix);
-    parts.push(geo);
+/** Deterministic 0..1 — same seed → same silhouette, no per-frame randomness */
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967295;
+  };
+}
+
+const TEMP_QUAT = new THREE.Quaternion();
+const TEMP_POS = new THREE.Vector3();
+const TEMP_SCALE = new THREE.Vector3();
+const TEMP_MATRIX = new THREE.Matrix4();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+
+function addPeak(parts, side, x, z, baseW, baseH, rand, opts = {}) {
+  const { groundY = -0.4, heightMul = 1, skipChance = 0 } = opts;
+  if (skipChance > 0 && rand() < skipChance) return;
+
+  const w = baseW * (0.82 + rand() * 0.32) * heightMul;
+  const h = baseH * (0.86 + rand() * 0.28) * heightMul;
+  const stretch = 0.9 + rand() * 0.2;
+  const geo = PEAK_GEO.clone();
+  geo.scale(w * stretch, h, w / stretch);
+
+  TEMP_QUAT.setFromAxisAngle(Y_AXIS, (rand() - 0.5) * 0.45);
+  TEMP_POS.set(side * x, groundY + h * 0.5, z);
+  TEMP_SCALE.set(1, 1, 1);
+  TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
+  geo.applyMatrix4(TEMP_MATRIX);
+  parts.push(geo);
+}
+
+/** Dağlar arası doldurucu: kaya bloğu, alçak tepe veya ince spire */
+function addFiller(parts, side, x, z, kind, bw, bh, rand, opts = {}) {
+  const { groundY = -0.55, depth = 1.2, skipChance = 0.2, heightMul = 1 } = opts;
+  if (skipChance > 0 && rand() < skipChance) return;
+
+  let geo;
+  if (kind === 'rock') {
+    geo = ROCK_GEO.clone();
+    const sx = bw * (0.88 + rand() * 0.22);
+    const sy = bh * (0.85 + rand() * 0.28) * heightMul;
+    const sz = depth * (0.85 + rand() * 0.25);
+    geo.scale(sx, sy, sz);
+  } else if (kind === 'spire') {
+    geo = PEAK_GEO.clone();
+    const h = bh * (0.9 + rand() * 0.22) * heightMul;
+    const r = 0.35 + rand() * 0.18;
+    geo.scale(r, h, r);
+  } else {
+    geo = PEAK_GEO.clone();
+    const stretch = 0.92 + rand() * 0.16;
+    geo.scale(bw * stretch * heightMul, bh * (0.9 + rand() * 0.2), bw / stretch);
   }
 
-  if (parts.length === 0) return MOUNTAIN_CONE.clone();
+  TEMP_QUAT.setFromAxisAngle(Y_AXIS, rand() * Math.PI * 0.5);
+  const lift = kind === 'rock' ? bh * 0.5 : bh * 0.45;
+  TEMP_POS.set(side * x, groundY + lift * heightMul, z);
+  TEMP_SCALE.set(1, 1, 1);
+  TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
+  geo.applyMatrix4(TEMP_MATRIX);
+  parts.push(geo);
+}
+
+function mergeParts(parts) {
+  if (parts.length === 0) return null;
   const merged = mergeGeometries(parts, false);
-  for (const p of parts) p.dispose();
-  return merged || MOUNTAIN_CONE.clone();
+  for (const part of parts) part.dispose();
+  return merged;
 }
 
-function buildValleyStripGeo() {
-  const parts = [];
-  const accentParts = [];
-  const farParts = [];
-  const zSlots = [-16, -6, 6, 16];
-
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < zSlots.length; i++) {
-      const nearWidth = 4.5 + Math.random() * 5.5;
-      const nearHeight = 4 + Math.random() * 6;
-      const nearX = side * (VALLEY_CENTER_CLEAR + 6.5 + i * 3.2 + Math.random() * 0.7);
-      const nearZ = zSlots[i] + (Math.random() - 0.5) * 1.6;
-
-      const cone = MOUNTAIN_CONE.clone();
-      cone.scale(nearWidth, nearHeight, nearWidth);
-      const coneMatrix = new THREE.Matrix4().makeRotationY((Math.random() - 0.5) * 0.7);
-      coneMatrix.setPosition(
-        nearX,
-        -5.8 - nearHeight * 0.55 - Math.random() * 1.6,
-        nearZ
-      );
-      cone.applyMatrix4(coneMatrix);
-      if ((i + (side < 0 ? 1 : 0)) % 3 === 0) accentParts.push(cone);
-      else parts.push(cone);
-
-      const ledge = VALLEY_BOX.clone();
-      ledge.scale(18 + Math.random() * 9, 2.6 + Math.random() * 1.6, 10 + Math.random() * 6);
-      const ledgeMatrix = new THREE.Matrix4().makeRotationY((Math.random() - 0.5) * 0.18);
-      ledgeMatrix.setPosition(
-        side * (VALLEY_CENTER_CLEAR + 11 + i * 2.2 + Math.random() * 0.8),
-        -11.2 - Math.random() * 2.2,
-        nearZ * 0.85
-      );
-      ledge.applyMatrix4(ledgeMatrix);
-      parts.push(ledge);
-
-      const farBlock = VALLEY_BOX.clone();
-      farBlock.scale(20 + Math.random() * 12, 3.6 + Math.random() * 2.3, 14 + Math.random() * 7);
-      const farMatrix = new THREE.Matrix4().makeRotationY((Math.random() - 0.5) * 0.15);
-      farMatrix.setPosition(
-        side * (VALLEY_CENTER_CLEAR + 22 + i * 4.4 + Math.random() * 1.2),
-        -15.5 - Math.random() * 3.2,
-        nearZ - 3.5 + (Math.random() - 0.5) * 1.2
-      );
-      farBlock.applyMatrix4(farMatrix);
-      farParts.push(farBlock);
-    }
-  }
-
-  const main = parts.length > 0 ? mergeGeometries(parts, false) : MOUNTAIN_CONE.clone();
-  for (const p of parts) p.dispose();
-  const far = farParts.length > 0 ? mergeGeometries(farParts, false) : null;
-  for (const p of farParts) p.dispose();
-
-  let accent = null;
-  if (accentParts.length > 0) {
-    accent = mergeGeometries(accentParts, false);
-    for (const p of accentParts) p.dispose();
-  }
-
-  return { main, accent, far };
+/** Güvenli z kayması — şeritler arası farklı ritim, çakışma yok */
+function jitterZ(baseZ, rand, variant) {
+  const shift = variant === 1 ? 2.5 : variant === 3 ? -2 : 0;
+  return baseZ + shift + (rand() - 0.5) * 2.2;
 }
 
-function createValleyStrip(z) {
+function jitterX(baseX, rand) {
+  return baseX + (rand() - 0.5) * 0.9;
+}
+
+function jitterXFiller(baseX, rand) {
+  return baseX + (rand() - 0.5) * 0.55;
+}
+
+function jitterZFiller(baseZ, rand, variant) {
+  const shift = variant === 1 ? 1.8 : variant === 3 ? -1.4 : 0;
+  return baseZ + shift + (rand() - 0.5) * 1.3;
+}
+
+const PEAK_SLOTS = [
+  { layer: 'near', side: -1, x: 11.5, z: -15, bw: 3.2, bh: 5.5 },
+  { layer: 'near', side: -1, x: 12, z: 12, bw: 2.8, bh: 4.8, skip: 0.12 },
+  { layer: 'near', side: 1, x: 11, z: -9, bw: 3, bh: 5.2 },
+  { layer: 'near', side: 1, x: 11.8, z: 15, bw: 2.9, bh: 4.5, skip: 0.12 },
+  { layer: 'mid', side: -1, x: 18.5, z: -19, bw: 4.5, bh: 9 },
+  { layer: 'mid', side: -1, x: 17.5, z: -3, bw: 4, bh: 7.5, skip: 0.08 },
+  { layer: 'mid', side: -1, x: 18, z: 14, bw: 4.2, bh: 8.2 },
+  { layer: 'mid', side: 1, x: 18, z: -14, bw: 4.3, bh: 8.5 },
+  { layer: 'mid', side: 1, x: 17.8, z: 2, bw: 3.8, bh: 7, skip: 0.08 },
+  { layer: 'mid', side: 1, x: 18.2, z: 17, bw: 4.1, bh: 8.8 },
+  { layer: 'far', side: -1, x: 28, z: -11, bw: 6, bh: 13, gy: -0.8 },
+  { layer: 'far', side: -1, x: 29, z: 8, bw: 5.5, bh: 11.5, gy: -0.8, skip: 0.15 },
+  { layer: 'far', side: 1, x: 28.5, z: -16, bw: 5.8, bh: 12, gy: -0.8 },
+  { layer: 'far', side: 1, x: 29.5, z: 5, bw: 6.2, bh: 14, gy: -0.8 },
+];
+
+/** Dağ zirveleri arasındaki boşluklara yerleştirilir — x daha içerde, z iki tepe ortası */
+const FILLER_SLOTS = [
+  { layer: 'near', side: -1, x: 10, z: -2, kind: 'knoll', bw: 2.4, bh: 1.6 },
+  { layer: 'near', side: -1, x: 10.4, z: 4, kind: 'rock', bw: 1.6, bh: 1.1, depth: 1.3 },
+  { layer: 'near', side: 1, x: 9.8, z: 3, kind: 'knoll', bw: 2.1, bh: 1.4 },
+  { layer: 'near', side: 1, x: 10.2, z: -12, kind: 'spire', bw: 0.5, bh: 3.2 },
+  { layer: 'mid', side: -1, x: 16.8, z: -11, kind: 'rock', bw: 2.2, bh: 1.4, depth: 1.8 },
+  { layer: 'mid', side: -1, x: 17.2, z: 5.5, kind: 'knoll', bw: 2.8, bh: 1.8 },
+  { layer: 'mid', side: -1, x: 16.5, z: 18, kind: 'spire', bw: 0.5, bh: 4.5 },
+  { layer: 'mid', side: 1, x: 16.6, z: -6, kind: 'knoll', bw: 2.5, bh: 1.7 },
+  { layer: 'mid', side: 1, x: 17, z: 9, kind: 'rock', bw: 1.9, bh: 1.2, depth: 1.5 },
+  { layer: 'mid', side: 1, x: 16.8, z: -17, kind: 'spire', bw: 0.45, bh: 3.8 },
+  { layer: 'far', side: -1, x: 26.5, z: -2, kind: 'knoll', bw: 3.2, bh: 2, gy: -0.85 },
+  { layer: 'far', side: -1, x: 27, z: 14, kind: 'rock', bw: 2.4, bh: 1.5, depth: 2, gy: -0.85 },
+  { layer: 'far', side: 1, x: 27.2, z: -5, kind: 'spire', bw: 0.5, bh: 5, gy: -0.85 },
+  { layer: 'far', side: 1, x: 26.8, z: 11, kind: 'knoll', bw: 3, bh: 2.1, gy: -0.85 },
+  { layer: 'near', side: -1, x: 9.5, z: -11, kind: 'rock', bw: 1.4, bh: 0.9, depth: 1.1, skip: 0.28 },
+  { layer: 'near', side: 1, x: 9.6, z: 11, kind: 'spire', bw: 0.4, bh: 2.6, skip: 0.28 },
+];
+
+function buildTerrainStripGeometries(seed) {
+  const rand = seededRandom(seed);
+  const variant = Math.floor(rand() * 4);
+  const heightMul = variant === 0 ? 0.9 + rand() * 0.2 : variant === 2 ? 1.05 + rand() * 0.25 : 0.95 + rand() * 0.35;
+  const near = [];
+  const mid = [];
+  const far = [];
+  const buckets = { near, mid, far };
+
+  for (const slot of PEAK_SLOTS) {
+    const x = jitterX(slot.x, rand);
+    const z = jitterZ(slot.z, rand, variant);
+    addPeak(buckets[slot.layer], slot.side, x, z, slot.bw, slot.bh, rand, {
+      groundY: slot.gy ?? -0.4,
+      heightMul,
+      skipChance: slot.skip ?? (variant === 2 && slot.layer === 'near' ? 0.18 : 0),
+    });
+  }
+
+  const fillerSkip = variant === 3 ? 0.32 : 0.18;
+  for (const slot of FILLER_SLOTS) {
+    const x = jitterXFiller(slot.x, rand);
+    const z = jitterZFiller(slot.z, rand, variant);
+    addFiller(buckets[slot.layer], slot.side, x, z, slot.kind, slot.bw, slot.bh, rand, {
+      groundY: slot.gy ?? -0.55,
+      depth: slot.depth ?? 1.2,
+      heightMul: heightMul * 0.92,
+      skipChance: slot.skip ?? fillerSkip,
+    });
+  }
+
+  if (variant === 1 || rand() > 0.55) {
+    addPeak(far, rand() > 0.5 ? 1 : -1, jitterX(27, rand), jitterZ(rand() > 0.5 ? -5 : 10, rand, 0), 5, 10, rand, {
+      groundY: -0.8,
+      heightMul: heightMul * 1.08,
+    });
+  }
+
+  return {
+    near: mergeParts(near),
+    mid: mergeParts(mid),
+    far: mergeParts(far),
+  };
+}
+
+function createTerrainStrip(stripSeed) {
   const group = new THREE.Group();
-  group.position.z = z;
-  const built = buildValleyStripGeo();
-  const main = new THREE.Mesh(built.main, VALLEY_MAT);
-  group.add(main);
+  const built = buildTerrainStripGeometries(stripSeed);
+  const mats = terrainMaterialsForSeed(stripSeed);
 
   if (built.far) {
-    const far = new THREE.Mesh(built.far, VALLEY_FAR_MAT);
-    far.position.set(0, 0, -5.5);
-    group.add(far);
+    const mesh = new THREE.Mesh(built.far, mats.far);
+    mesh.frustumCulled = false;
+    group.add(mesh);
   }
-
-  if (built.accent) {
-    group.add(new THREE.Mesh(built.accent, VALLEY_ACCENT_MAT));
+  if (built.mid) {
+    const mesh = new THREE.Mesh(built.mid, mats.mid);
+    mesh.frustumCulled = false;
+    group.add(mesh);
   }
-
-  // Add side walls so valley masses visually connect downward (no "floating islands").
-  for (const side of [-1, 1]) {
-    const sideWall = new THREE.Mesh(VALLEY_SIDE_WALL_GEO, VALLEY_WALL_MAT);
-    sideWall.position.set(side * (VALLEY_CENTER_CLEAR + 9.5), -10.8, -2);
-    sideWall.rotation.y = side * Math.PI / 2;
-    sideWall.rotation.z = side * 0.03;
-    group.add(sideWall);
-  }
-
-  // Low-lying fog bed to hide valley bottoms and avoid "floating" silhouettes.
-  for (const side of [-1, 1]) {
-    const fogBed = new THREE.Mesh(VALLEY_FOG_BED_GEO, VALLEY_BASE_FOG_MAT);
-    fogBed.rotation.x = -Math.PI / 2;
-    fogBed.position.set(side * (VALLEY_CENTER_CLEAR + 14), -8.4, -1);
-    group.add(fogBed);
-
-    const deepFogBed = new THREE.Mesh(VALLEY_FOG_BED_GEO, VALLEY_DEEP_FOG_MAT);
-    deepFogBed.rotation.x = -Math.PI / 2;
-    deepFogBed.position.set(side * (VALLEY_CENTER_CLEAR + 14), -12.2, -3.5);
-    deepFogBed.scale.set(1.2, 1, 1.25);
-    group.add(deepFogBed);
-  }
-
-  return group;
-}
-
-function createMountainStrip(z) {
-  const group = new THREE.Group();
-  group.position.z = z;
-
-  const mountains = new THREE.Mesh(buildMountainStripGeo(), MOUNTAIN_MAT);
-  group.add(mountains);
-
-  const farMountains = new THREE.Mesh(buildMountainStripGeo(), MOUNTAIN_FAR_MAT);
-  farMountains.position.set(0, 1.5, -4);
-  farMountains.scale.set(1.15, 1.1, 1.2);
-  group.add(farMountains);
-
-  const fogMat = new THREE.MeshBasicMaterial({
-    color: 0x2a2040,
-    transparent: true,
-    opacity: 0.18,
-    depthWrite: false,
-    fog: true,
-  });
-
-  const mistGeo = new THREE.PlaneGeometry(22, 7);
-  for (const side of [-1, 1]) {
-    const sideMist = new THREE.Mesh(mistGeo, fogMat);
-    sideMist.rotation.x = -Math.PI / 2;
-    sideMist.position.set(side * 22, 3, 0);
-    group.add(sideMist);
+  if (built.near) {
+    const mesh = new THREE.Mesh(built.near, mats.near);
+    mesh.frustumCulled = false;
+    group.add(mesh);
   }
 
   return group;
@@ -315,14 +333,8 @@ export class Environment {
   constructor(scene) {
     this.scene = scene;
     this.skyGroup = new THREE.Group();
-    this.mountainGroup = new THREE.Group();
-    this.valleyGroup = new THREE.Group();
-    this.mountainStrips = [];
-    this.valleyStrips = [];
-    this.stripSpacing = 40;
-    this.valleySpacing = 26;
-    this.poolSize = 10;
-    this.valleyPoolSize = 12;
+    this.terrainGroup = new THREE.Group();
+    this.terrainStrips = [];
     this.time = 0;
     this._skyStopsKey = '';
     this._auroraMeshes = [];
@@ -348,7 +360,7 @@ export class Environment {
     this.skyMesh = sky;
     this.skyGroup.add(sky);
 
-    const starField = createStarField();
+    const starField = createStarField(GRAPHICS.starCount);
     this.stars = starField.points;
     this.starPhases = starField.phases;
     this.starBaseSize = starField.baseSize;
@@ -412,19 +424,13 @@ export class Environment {
 
     scene.add(this.skyGroup);
 
-    for (let i = 0; i < this.poolSize; i++) {
-      const strip = createMountainStrip(-i * this.stripSpacing - 20);
-      this.mountainStrips.push(strip);
-      this.mountainGroup.add(strip);
+    for (let i = 0; i < TERRAIN_POOL; i++) {
+      const strip = createTerrainStrip(i * 7919 + 17);
+      strip.position.z = -i * STRIP_SPACING - 18;
+      this.terrainStrips.push(strip);
+      this.terrainGroup.add(strip);
     }
-    scene.add(this.mountainGroup);
-
-    for (let i = 0; i < this.valleyPoolSize; i++) {
-      const strip = createValleyStrip(-i * this.valleySpacing - 12);
-      this.valleyStrips.push(strip);
-      this.valleyGroup.add(strip);
-    }
-    scene.add(this.valleyGroup);
+    scene.add(this.terrainGroup);
 
     scene.background = null;
   }
@@ -492,49 +498,29 @@ export class Environment {
     this.moonHalo.scale.setScalar(0.95 + Math.sin(this.time * 0.7) * 0.08);
     this.moonHalo.material.opacity = this._cycleMoonHalo * (0.95 + Math.sin(this.time * 0.85 + 1) * 0.05);
 
-    const parallax = speed * dt * 0.35;
-    const valleyParallax = speed * dt * 0.55;
+    const parallax = speed * dt * 0.38;
 
-    for (const strip of this.mountainStrips) {
+    for (const strip of this.terrainStrips) {
       strip.position.z += parallax;
     }
 
-    for (const strip of this.valleyStrips) {
-      strip.position.z += valleyParallax;
-    }
-
     let minZ = Infinity;
-    for (const strip of this.mountainStrips) {
+    for (const strip of this.terrainStrips) {
       if (strip.position.z < minZ) minZ = strip.position.z;
     }
 
-    for (const strip of this.mountainStrips) {
-      if (strip.position.z > RECYCLE_Z) {
-        strip.position.z = minZ - this.stripSpacing - STRIP_BACKOFF;
+    for (const strip of this.terrainStrips) {
+      if (strip.position.z > TERRAIN_RECYCLE_Z) {
+        strip.position.z = minZ - STRIP_SPACING - STRIP_BACKOFF;
         minZ = strip.position.z;
-      }
-    }
-
-    let valleyMinZ = Infinity;
-    for (const strip of this.valleyStrips) {
-      if (strip.position.z < valleyMinZ) valleyMinZ = strip.position.z;
-    }
-
-    for (const strip of this.valleyStrips) {
-      if (strip.position.z > RECYCLE_Z) {
-        strip.position.z = valleyMinZ - this.valleySpacing - STRIP_BACKOFF;
-        valleyMinZ = strip.position.z;
       }
     }
   }
 
   reset() {
     this.time = 0;
-    this.mountainStrips.forEach((strip, i) => {
-      strip.position.z = -i * this.stripSpacing - 20;
-    });
-    this.valleyStrips.forEach((strip, i) => {
-      strip.position.z = -i * this.valleySpacing - 12;
+    this.terrainStrips.forEach((strip, i) => {
+      strip.position.z = -i * STRIP_SPACING - 18;
     });
   }
 }

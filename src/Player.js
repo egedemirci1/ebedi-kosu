@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { LANES } from './scene.js';
+import { GRAPHICS } from './graphicsProfile.js';
+import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 const WALL_BUMP_AMOUNT = 1.15;
 const WALL_BUMP_DURATION = 0.5;
@@ -45,7 +47,7 @@ export class Player {
     this.slideTimer = 0;
     this.slideBlend = 0;
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = createSurfaceMaterial({
       color: 0x44aaff,
       emissive: 0x114466,
       emissiveIntensity: 0.4,
@@ -56,7 +58,7 @@ export class Player {
 
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.7, 4, 8), bodyMat);
     body.position.y = 1.05;
-    body.castShadow = true;
+    body.castShadow = GRAPHICS.shadows;
     this.group.add(body);
 
     const head = new THREE.Mesh(
@@ -64,7 +66,7 @@ export class Player {
       bodyMat.clone()
     );
     head.position.y = 1.75;
-    head.castShadow = true;
+    head.castShadow = GRAPHICS.shadows;
     this.group.add(head);
 
     const glow = new THREE.Mesh(

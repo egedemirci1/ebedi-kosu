@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LANES, LANE_WIDTH } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
+import { FLOOR_TOP_Y } from './Track.js';
 import { pickupWithinPlayerReach } from './CoinManager.js';
 
 export const BOOSTER_TYPES = ['ghost', 'jump', 'speed'];
@@ -10,7 +11,8 @@ const PAD_LENGTH = 3.6;
 const PAD_HALF = PAD_LENGTH / 2;
 const FLOATING_Y_CENTER = 0.95;
 const FLOATING_Y_AMP = 0.14;
-const SPEED_PAD_Y = 0.03;
+const SPEED_PAD_Y = FLOOR_TOP_Y + 0.045;
+const BOOSTER_RENDER_ORDER = 5;
 const FLOATING_COLLECT_Z = 0.55;
 const FLOATING_SIGN_WIDTH = 1.14;
 const FLOATING_SIGN_HEIGHT = 1.58;
@@ -218,13 +220,15 @@ export class BoosterManager {
       this.padTextures[type] = texture;
       this.materials[type] = new THREE.MeshBasicMaterial({
         map: texture,
-        fog: true,
+        fog: false,
         transparent: true,
         opacity: 0.92,
+        depthWrite: false,
       });
 
       const mesh = new THREE.InstancedMesh(PAD_GEOMETRY, this.materials[type], MAX_PER_TYPE);
       mesh.frustumCulled = false;
+      mesh.renderOrder = BOOSTER_RENDER_ORDER;
       scene.add(mesh);
 
       this.instancedMeshes[type] = mesh;
@@ -240,7 +244,7 @@ export class BoosterManager {
     for (const type of FLOATING_TYPES) {
       this.materials[type] = new THREE.MeshBasicMaterial({
         map: FLOATING_TEXTURE_FACTORIES[type](),
-        fog: true,
+        fog: false,
         transparent: true,
         opacity: 0.95,
         depthWrite: false,
@@ -253,6 +257,7 @@ export class BoosterManager {
         MAX_PER_TYPE
       );
       mesh.frustumCulled = false;
+      mesh.renderOrder = BOOSTER_RENDER_ORDER;
       scene.add(mesh);
 
       this.instancedMeshes[type] = mesh;
@@ -358,7 +363,7 @@ export class BoosterManager {
     this.freeSlots[type].push(slot);
   }
 
-  setInstanceMatrix(entry) {
+  setInstanceMatrix(entry, camera = null) {
     const pulse = 0.88 + Math.sin(this.time * 6 + entry.phase) * 0.12;
 
     if (entry.type === 'speed') {
@@ -373,7 +378,11 @@ export class BoosterManager {
       entry.y = floatY;
       const scale = 1 + Math.sin(this.time * 5 + entry.phase) * 0.06;
       TEMP_POS.set(LANES[entry.lane], floatY, entry.z);
-      TEMP_QUAT.identity();
+      if (camera) {
+        TEMP_QUAT.copy(camera.quaternion);
+      } else {
+        TEMP_QUAT.identity();
+      }
       TEMP_SCALE.set(scale, scale, 1);
       TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
       this.materials[entry.type].opacity = pulse;
@@ -492,7 +501,7 @@ export class BoosterManager {
     return null;
   }
 
-  update(dt, speed) {
+  update(dt, speed, camera = null) {
     this.time += dt;
     for (const type of PAD_TYPES) {
       this.padTextures[type].offset.y -= dt * 1.8;
@@ -517,7 +526,7 @@ export class BoosterManager {
         continue;
       }
 
-      this.setInstanceMatrix(p);
+      this.setInstanceMatrix(p, camera);
 
       if (p.z > 8) {
         this.releasePickup(p);

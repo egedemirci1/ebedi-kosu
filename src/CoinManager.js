@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LANES } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
+import { createSurfaceMaterial, instancedFrustumCulled } from './surfaceMaterial.js';
 
 const MAX_COINS = 64;
 const COIN_RADIUS = 0.38;
@@ -162,7 +163,7 @@ export class CoinManager {
     this.pickupManager = null;
 
     this.coinTexture = createCoinTexture();
-    this.material = new THREE.MeshStandardMaterial({
+    this.material = createSurfaceMaterial({
       map: this.coinTexture,
       color: 0xffffff,
       emissive: 0xffaa22,
@@ -175,7 +176,7 @@ export class CoinManager {
     this.mesh = new THREE.InstancedMesh(COIN_GEOMETRY, this.material, MAX_COINS);
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
-    this.mesh.frustumCulled = false;
+    this.mesh.frustumCulled = instancedFrustumCulled();
     scene.add(this.mesh);
 
     this.freeSlots = [];

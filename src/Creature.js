@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 export class Creature {
   constructor(scene) {
@@ -9,7 +10,7 @@ export class Creature {
     this.lungeTimer = 0;
     this.animTime = 0;
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = createSurfaceMaterial({
       color: 0x1a0818,
       emissive: 0x220011,
       emissiveIntensity: 0.6,

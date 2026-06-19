@@ -14,6 +14,8 @@ import { BoosterShop, SHOP_BOOSTER_TYPES } from './BoosterShop.js';
 import { CoinManager } from './CoinManager.js';
 import { DayCycle } from './DayCycle.js';
 import { fetchTopScores, submitScore, startRunSession, isValidPlayerName, buildLeaderboardDisplayRows, formatLeaderboardDistance } from './Leaderboard.js';
+import { applyRendererProfile } from './graphicsProfile.js';
+import { runSpeedAtDistance } from '../shared/runPhysics.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
 const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
@@ -812,7 +814,7 @@ export class Game {
       dt = Math.min(dt, 0.05);
       this.runActiveMs += dt * 1000;
 
-      this.speed = this.baseSpeed + this.distance * 0.008;
+      this.speed = runSpeedAtDistance(this.distance);
       this.boosters.update(dt);
       const runSpeed = this.speed * this.boosters.getSpeedMultiplier();
       this.distance += runSpeed * dt;
@@ -822,7 +824,7 @@ export class Game {
       this.gaps.update(dt, runSpeed, this.distance);
       this.track.updateGapMask(this.gaps);
       this.obstacles.update(dt, runSpeed, this.distance);
-      this.pickups.update(dt, runSpeed);
+      this.pickups.update(dt, runSpeed, this.camera);
       this.coins.update(dt, runSpeed);
       const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
       this.player.update(dt, this.gaps.hasFloorAt(0, this.player.laneIndex), wantsDown);
@@ -947,6 +949,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
     this._lastCamFov = this.camera.fov;
     this.renderer.setSize(width, height);
+    applyRendererProfile(this.renderer);
     this._needsRender = true;
   }
 

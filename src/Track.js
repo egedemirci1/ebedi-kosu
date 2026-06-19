@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GRAPHICS } from './graphicsProfile.js';
+import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 const SEGMENT_LENGTH = 20;
 const TRACK_WIDTH = 8;
@@ -9,10 +10,15 @@ const FLOOR_TILE_LENGTH = SEGMENT_LENGTH / FLOOR_TILE_COUNT;
 const FLOOR_TILE_HALF = FLOOR_TILE_LENGTH / 2;
 const FLOOR_THICKNESS = 0.12;
 const FLOOR_Y = -FLOOR_THICKNESS / 2;
+const FLOOR_TOP_Y = FLOOR_THICKNESS / 2;
 const CAMERA_Z = 8;
 const RECYCLE_AFTER_Z = CAMERA_Z + SEGMENT_HALF + 8;
 export const WALL_X = TRACK_WIDTH / 2 + 0.22;
 export const WALL_TILE_WIDTH = 0.45;
+
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+const TEMP_MATRIX = new THREE.Matrix4();
+const MESH_PROXY_COUNT = 6;
 
 function createWallTexture() {
   const canvas = document.createElement('canvas');
@@ -62,6 +68,7 @@ function createFloorSegmentTexture() {
   canvas.width = 256;
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
+  const tileV = canvas.height / FLOOR_TILE_COUNT;
 
   const base = ctx.createLinearGradient(0, 0, 0, 512);
   base.addColorStop(0, '#3a3468');
@@ -77,8 +84,41 @@ function createFloorSegmentTexture() {
   ctx.fillStyle = sheen;
   ctx.fillRect(0, 0, 256, 512);
 
+  // Per-tile panel grid (matches 10 floor tiles per segment — zero extra GPU cost)
+  for (let t = 0; t < FLOOR_TILE_COUNT; t++) {
+    const y0 = t * tileV;
+    const y1 = y0 + tileV;
+
+    ctx.strokeStyle = 'rgba(100, 80, 160, 0.28)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, y0 + 1, 254, tileV - 2);
+
+    ctx.strokeStyle = 'rgba(160, 130, 230, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(128, y0 + 4);
+    ctx.lineTo(128, y1 - 4);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(8, y0 + tileV / 2);
+    ctx.lineTo(248, y0 + tileV / 2);
+    ctx.stroke();
+
+    for (let gx = 32; gx < 256; gx += 32) {
+      for (let gy = y0 + 8; gy < y1 - 4; gy += 10) {
+        ctx.fillStyle = 'rgba(130, 100, 200, 0.12)';
+        ctx.fillRect(gx, gy, 1, 1);
+      }
+    }
+
+    ctx.fillStyle = 'rgba(180, 140, 255, 0.35)';
+    ctx.fillRect(4, y0 + 3, 3, 3);
+    ctx.fillRect(249, y0 + 3, 3, 3);
+  }
+
   for (let x = 64; x < 256; x += 64) {
-    ctx.strokeStyle = 'rgba(140, 120, 220, 0.18)';
+    ctx.strokeStyle = 'rgba(140, 120, 220, 0.22)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -90,16 +130,16 @@ function createFloorSegmentTexture() {
   for (const lx of laneX) {
     const laneGrad = ctx.createLinearGradient(lx - 8, 0, lx + 8, 0);
     laneGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    laneGrad.addColorStop(0.5, 'rgba(100, 180, 255, 0.22)');
+    laneGrad.addColorStop(0.5, 'rgba(100, 180, 255, 0.28)');
     laneGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = laneGrad;
     ctx.fillRect(lx - 10, 0, 20, 512);
   }
 
-  ctx.strokeStyle = 'rgba(180, 140, 255, 0.2)';
+  ctx.strokeStyle = 'rgba(200, 160, 255, 0.32)';
   ctx.lineWidth = 2;
   for (const lx of [85, 171]) {
-    ctx.setLineDash([12, 18]);
+    ctx.setLineDash([10, 14]);
     ctx.beginPath();
     ctx.moveTo(lx, 0);
     ctx.lineTo(lx, 512);
@@ -119,6 +159,9 @@ function createFloorSegmentTexture() {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
   return texture;
 }
 
@@ -126,46 +169,34 @@ function tileLocalZ(tileIndex) {
   return -SEGMENT_HALF + FLOOR_TILE_HALF + tileIndex * FLOOR_TILE_LENGTH;
 }
 
-function createFloorTileBoxGeometry(tileIndex) {
-  const geo = new THREE.BoxGeometry(TRACK_WIDTH, FLOOR_THICKNESS, FLOOR_TILE_LENGTH);
+function createFloorTopGeometry(tileIndex) {
+  const geo = new THREE.PlaneGeometry(TRACK_WIDTH, FLOOR_TILE_LENGTH);
+  geo.rotateX(-Math.PI / 2);
   const uv = geo.attributes.uv;
-  const normal = geo.attributes.normal;
   const vLo = tileIndex / FLOOR_TILE_COUNT;
   const vHi = (tileIndex + 1) / FLOOR_TILE_COUNT;
 
   for (let i = 0; i < uv.count; i++) {
-    if (normal.getY(i) > 0.5) {
-      uv.setY(i, vLo + uv.getY(i) * (vHi - vLo));
-    }
+    uv.setY(i, vLo + uv.getY(i) * (vHi - vLo));
   }
 
   return geo;
 }
 
-function translateGeo(geo, x, y, z) {
-  const g = geo.clone();
-  g.translate(x, y, z);
-  return g;
+function createTileMeshProxies(tile) {
+  return Array.from({ length: MESH_PROXY_COUNT }, () => ({
+    get visible() {
+      return tile.visible;
+    },
+    set visible(value) {
+      tile.visible = value;
+    },
+  }));
 }
 
-function buildSideDecorTileGeo(trimGeo, capGeo, wallX, trimX, localZ) {
-  const parts = [
-    translateGeo(trimGeo, trimX, 1.5, localZ),
-    translateGeo(capGeo, wallX, 2.98, localZ),
-  ];
-  const merged = mergeGeometries(parts, false);
-  for (const p of parts) p.dispose();
-  return merged;
-}
-
-function buildRailsTileGeo(railGeo, localZ) {
-  const parts = [
-    translateGeo(railGeo, -TRACK_WIDTH / 2, 0.06, localZ),
-    translateGeo(railGeo, TRACK_WIDTH / 2, 0.06, localZ),
-  ];
-  const merged = mergeGeometries(parts, false);
-  for (const p of parts) p.dispose();
-  return merged;
+function setTranslationMatrix(x, y, z) {
+  TEMP_MATRIX.makeTranslation(x, y, z);
+  return TEMP_MATRIX;
 }
 
 export class Track {
@@ -187,26 +218,25 @@ export class Track {
       fog: true,
     });
 
-    this.floorTopMat = new THREE.MeshStandardMaterial({
-      map: floorTexture,
-      color: 0xffffff,
-      emissive: 0x443366,
-      emissiveIntensity: 0.32,
-      roughness: 0.52,
-      metalness: 0.12,
-      fog: true,
-    });
+    this.floorTopMat = GRAPHICS.useLambert
+      ? new THREE.MeshBasicMaterial({
+          map: floorTexture,
+          color: 0xddddee,
+          fog: true,
+          side: THREE.DoubleSide,
+        })
+      : createSurfaceMaterial({
+          map: floorTexture,
+          color: 0xffffff,
+          emissive: 0x332255,
+          emissiveIntensity: 0.25,
+          roughness: 0.52,
+          metalness: 0.12,
+          fog: true,
+          side: THREE.DoubleSide,
+        });
 
-    this.floorMats = [
-      this.floorSideMat,
-      this.floorSideMat,
-      this.floorTopMat,
-      this.floorSideMat,
-      this.floorSideMat,
-      this.floorSideMat,
-    ];
-
-    this.wallMat = new THREE.MeshStandardMaterial({
+    this.wallMat = createSurfaceMaterial({
       map: wallTexture,
       color: 0xccccee,
       emissive: 0x1a1030,
@@ -232,10 +262,8 @@ export class Track {
       depthWrite: false,
     });
 
-    this.floorTileGeos = Array.from({ length: FLOOR_TILE_COUNT }, (_, i) =>
-      createFloorTileBoxGeometry(i)
-    );
     this.wallTileGeo = new THREE.BoxGeometry(0.45, 3, FLOOR_TILE_LENGTH);
+    this.floorBodyGeo = new THREE.BoxGeometry(TRACK_WIDTH, FLOOR_THICKNESS, FLOOR_TILE_LENGTH);
     this.trimTileGeo = new THREE.BoxGeometry(0.07, 2.7, FLOOR_TILE_LENGTH);
     this.capTileGeo = new THREE.BoxGeometry(0.52, 0.14, FLOOR_TILE_LENGTH);
     this.railTileGeo = new THREE.BoxGeometry(0.1, 0.1, FLOOR_TILE_LENGTH);
@@ -243,60 +271,197 @@ export class Track {
     this.wallX = TRACK_WIDTH / 2 + 0.22;
     this.trimX = TRACK_WIDTH / 2 + 0.06;
 
+    this.maxTileSlots = this.poolSize * FLOOR_TILE_COUNT;
+    this._initInstancedMeshes();
+    this._instanceLayersDirty = true;
+
     for (let i = 0; i < this.poolSize; i++) {
       this.segments.push(this.createSegment(-i * SEGMENT_LENGTH));
     }
+
+    this.syncAllInstanceMatrices();
+  }
+
+  _initInstancedMeshes() {
+    const dynamic = THREE.DynamicDrawUsage;
+
+    this.floorTopLayers = Array.from({ length: FLOOR_TILE_COUNT }, (_, tileIndex) => {
+      const mesh = new THREE.InstancedMesh(
+        createFloorTopGeometry(tileIndex),
+        this.floorTopMat,
+        this.poolSize
+      );
+      mesh.instanceMatrix.setUsage(dynamic);
+      mesh.receiveShadow = GRAPHICS.shadows;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 1;
+      this.scene.add(mesh);
+      return mesh;
+    });
+
+    this.floorBodyMesh = new THREE.InstancedMesh(
+      this.floorBodyGeo,
+      this.floorSideMat,
+      this.maxTileSlots
+    );
+    this.floorBodyMesh.instanceMatrix.setUsage(dynamic);
+    this.floorBodyMesh.receiveShadow = GRAPHICS.shadows;
+    this.floorBodyMesh.frustumCulled = false;
+    this.scene.add(this.floorBodyMesh);
+
+    this.wallLeftMesh = new THREE.InstancedMesh(this.wallTileGeo, this.wallMat, this.maxTileSlots);
+    this.wallLeftMesh.instanceMatrix.setUsage(dynamic);
+    this.wallLeftMesh.frustumCulled = false;
+    this.scene.add(this.wallLeftMesh);
+
+    this.wallRightMesh = new THREE.InstancedMesh(this.wallTileGeo, this.wallMat, this.maxTileSlots);
+    this.wallRightMesh.instanceMatrix.setUsage(dynamic);
+    this.wallRightMesh.frustumCulled = false;
+    this.scene.add(this.wallRightMesh);
+
+    this.decorTrimLeftMesh = new THREE.InstancedMesh(
+      this.trimTileGeo,
+      this.decorMat,
+      this.maxTileSlots
+    );
+    this.decorTrimLeftMesh.instanceMatrix.setUsage(dynamic);
+    this.decorTrimLeftMesh.frustumCulled = false;
+    this.scene.add(this.decorTrimLeftMesh);
+
+    this.decorCapLeftMesh = new THREE.InstancedMesh(
+      this.capTileGeo,
+      this.decorMat,
+      this.maxTileSlots
+    );
+    this.decorCapLeftMesh.instanceMatrix.setUsage(dynamic);
+    this.decorCapLeftMesh.frustumCulled = false;
+    this.scene.add(this.decorCapLeftMesh);
+
+    this.decorTrimRightMesh = new THREE.InstancedMesh(
+      this.trimTileGeo,
+      this.decorMat,
+      this.maxTileSlots
+    );
+    this.decorTrimRightMesh.instanceMatrix.setUsage(dynamic);
+    this.decorTrimRightMesh.frustumCulled = false;
+    this.scene.add(this.decorTrimRightMesh);
+
+    this.decorCapRightMesh = new THREE.InstancedMesh(
+      this.capTileGeo,
+      this.decorMat,
+      this.maxTileSlots
+    );
+    this.decorCapRightMesh.instanceMatrix.setUsage(dynamic);
+    this.decorCapRightMesh.frustumCulled = false;
+    this.scene.add(this.decorCapRightMesh);
+
+    this.railLeftMesh = new THREE.InstancedMesh(this.railTileGeo, this.railMat, this.maxTileSlots);
+    this.railLeftMesh.instanceMatrix.setUsage(dynamic);
+    this.railLeftMesh.frustumCulled = false;
+    this.scene.add(this.railLeftMesh);
+
+    this.railRightMesh = new THREE.InstancedMesh(this.railTileGeo, this.railMat, this.maxTileSlots);
+    this.railRightMesh.instanceMatrix.setUsage(dynamic);
+    this.railRightMesh.frustumCulled = false;
+    this.scene.add(this.railRightMesh);
   }
 
   createSegment(z) {
-    const group = new THREE.Group();
-    group.position.z = z;
-
+    const segIndex = this.segments.length;
     const trackTiles = [];
 
-    for (let i = 0; i < FLOOR_TILE_COUNT; i++) {
-      const localZ = tileLocalZ(i);
-      const meshes = [];
-
-      const floor = new THREE.Mesh(this.floorTileGeos[i], this.floorMats);
-      floor.position.set(0, FLOOR_Y, localZ);
-      floor.receiveShadow = true;
-      group.add(floor);
-      meshes.push(floor);
-
-      const leftWall = new THREE.Mesh(this.wallTileGeo, this.wallMat);
-      leftWall.position.set(-this.wallX, 1.5, localZ);
-      group.add(leftWall);
-      meshes.push(leftWall);
-
-      const rightWall = new THREE.Mesh(this.wallTileGeo, this.wallMat);
-      rightWall.position.set(this.wallX, 1.5, localZ);
-      group.add(rightWall);
-      meshes.push(rightWall);
-
-      const leftDecor = new THREE.Mesh(
-        buildSideDecorTileGeo(this.trimTileGeo, this.capTileGeo, -this.wallX, -this.trimX, localZ),
-        this.decorMat
-      );
-      group.add(leftDecor);
-      meshes.push(leftDecor);
-
-      const rightDecor = new THREE.Mesh(
-        buildSideDecorTileGeo(this.trimTileGeo, this.capTileGeo, this.wallX, this.trimX, localZ),
-        this.decorMat
-      );
-      group.add(rightDecor);
-      meshes.push(rightDecor);
-
-      const rails = new THREE.Mesh(buildRailsTileGeo(this.railTileGeo, localZ), this.railMat);
-      group.add(rails);
-      meshes.push(rails);
-
-      trackTiles.push({ localZ, meshes });
+    for (let tileIndex = 0; tileIndex < FLOOR_TILE_COUNT; tileIndex++) {
+      const localZ = tileLocalZ(tileIndex);
+      const tile = {
+        localZ,
+        slot: segIndex * FLOOR_TILE_COUNT + tileIndex,
+        visible: true,
+        meshes: [],
+      };
+      tile.meshes = createTileMeshProxies(tile);
+      trackTiles.push(tile);
     }
 
-    this.scene.add(group);
-    return { group, z, trackTiles };
+    return { z, trackTiles };
+  }
+
+  syncAllInstanceMatrices() {
+    for (let slot = 0; slot < this.maxTileSlots; slot++) {
+      this.syncInstanceMatrixForSlot(slot);
+    }
+    this._markInstanceLayersDirty();
+  }
+
+  syncInstanceMatrixForSlot(slot) {
+    const segIndex = Math.floor(slot / FLOOR_TILE_COUNT);
+    const tileIndex = slot % FLOOR_TILE_COUNT;
+    const segment = this.segments[segIndex];
+    if (!segment) return;
+
+    const tile = segment.trackTiles[tileIndex];
+    const worldZ = segment.z + tile.localZ;
+    const hidden = HIDDEN_MATRIX;
+    const visible = tile.visible;
+
+    this.floorTopLayers[tileIndex].setMatrixAt(
+      segIndex,
+      visible ? setTranslationMatrix(0, FLOOR_TOP_Y + 0.002, worldZ) : hidden
+    );
+
+    this.floorBodyMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(0, FLOOR_Y, worldZ) : hidden
+    );
+
+    this.wallLeftMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(-this.wallX, 1.5, worldZ) : hidden
+    );
+
+    this.wallRightMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(this.wallX, 1.5, worldZ) : hidden
+    );
+
+    this.decorTrimLeftMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(-this.trimX, 1.5, worldZ) : hidden
+    );
+    this.decorCapLeftMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(-this.wallX, 2.98, worldZ) : hidden
+    );
+    this.decorTrimRightMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(this.trimX, 1.5, worldZ) : hidden
+    );
+    this.decorCapRightMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(this.wallX, 2.98, worldZ) : hidden
+    );
+    this.railLeftMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(-TRACK_WIDTH / 2, 0.06, worldZ) : hidden
+    );
+    this.railRightMesh.setMatrixAt(
+      slot,
+      visible ? setTranslationMatrix(TRACK_WIDTH / 2, 0.06, worldZ) : hidden
+    );
+  }
+
+  _markInstanceLayersDirty() {
+    for (const mesh of this.floorTopLayers) {
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    this.floorBodyMesh.instanceMatrix.needsUpdate = true;
+    this.wallLeftMesh.instanceMatrix.needsUpdate = true;
+    this.wallRightMesh.instanceMatrix.needsUpdate = true;
+    this.decorTrimLeftMesh.instanceMatrix.needsUpdate = true;
+    this.decorCapLeftMesh.instanceMatrix.needsUpdate = true;
+    this.decorTrimRightMesh.instanceMatrix.needsUpdate = true;
+    this.decorCapRightMesh.instanceMatrix.needsUpdate = true;
+    this.railLeftMesh.instanceMatrix.needsUpdate = true;
+    this.railRightMesh.instanceMatrix.needsUpdate = true;
   }
 
   findSegmentNearest(worldZ) {
@@ -307,13 +472,11 @@ export class Track {
     return best;
   }
 
-  /** Solid floor edge (toward gap) just before gapStart — aligned to tile grid. */
   getFloorEdgeBeforeGap(gapStartZ, hintZ = gapStartZ) {
     const base = this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
     return base + FLOOR_TILE_LENGTH * Math.floor((gapStartZ - base) / FLOOR_TILE_LENGTH);
   }
 
-  /** Solid floor edge (toward gap) just after gapEnd — aligned to tile grid. */
   getFloorEdgeAfterGap(gapEndZ, hintZ = gapEndZ) {
     const base = this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
     return base + FLOOR_TILE_LENGTH * Math.ceil((gapEndZ - base) / FLOOR_TILE_LENGTH);
@@ -335,11 +498,15 @@ export class Track {
       for (const tile of seg.trackTiles) {
         const worldZ = seg.z + tile.localZ;
         const visible = !this.tileIntersectsGap(gapManager, worldZ);
+        tile.visible = visible;
         for (const mesh of tile.meshes) {
           mesh.visible = visible;
         }
+        this.syncInstanceMatrixForSlot(tile.slot);
       }
     }
+
+    this._markInstanceLayersDirty();
   }
 
   getRearZ(exclude = null) {
@@ -355,40 +522,49 @@ export class Track {
     this.pulseTime += dt;
     const pulse = 0.78 + Math.sin(this.pulseTime * 3.2) * 0.14;
     const railPulse = 0.72 + Math.sin(this.pulseTime * 4.1 + 1.2) * 0.16;
-    const floorPulse = 0.3 + Math.sin(this.pulseTime * 2.6) * 0.06;
+    const floorPulse = 0.88 + Math.sin(this.pulseTime * 2.6) * 0.06;
     this.decorMat.opacity = pulse;
     this.railMat.opacity = railPulse;
-    this.floorTopMat.emissiveIntensity = floorPulse;
+    if (this.floorTopMat.emissiveIntensity !== undefined) {
+      this.floorTopMat.emissiveIntensity = floorPulse * 0.28;
+    } else {
+      this.floorTopMat.color.setScalar(floorPulse);
+    }
 
     const move = speed * dt;
 
     for (const seg of this.segments) {
-      seg.group.position.z += move;
-      seg.z = seg.group.position.z;
+      seg.z += move;
     }
 
     for (const seg of this.segments) {
       const backEdge = seg.z - SEGMENT_HALF;
       if (backEdge > RECYCLE_AFTER_Z) {
         const rearZ = this.getRearZ(seg);
-        seg.group.position.z = rearZ - SEGMENT_LENGTH;
-        seg.z = seg.group.position.z;
+        seg.z = rearZ - SEGMENT_LENGTH;
       }
     }
+
+    this.syncAllInstanceMatrices();
   }
 
   reset() {
     this.pulseTime = 0;
-    this.floorTopMat.emissiveIntensity = 0.32;
+    if (this.floorTopMat.emissiveIntensity !== undefined) {
+      this.floorTopMat.emissiveIntensity = 0.25;
+    } else {
+      this.floorTopMat.color.setScalar(0.92);
+    }
     this.segments.forEach((seg, i) => {
-      seg.group.position.z = -i * SEGMENT_LENGTH;
-      seg.z = seg.group.position.z;
+      seg.z = -i * SEGMENT_LENGTH;
       for (const tile of seg.trackTiles) {
+        tile.visible = true;
         for (const mesh of tile.meshes) {
           mesh.visible = true;
         }
       }
     });
+    this.syncAllInstanceMatrices();
   }
 }
 
@@ -400,4 +576,5 @@ export {
   FLOOR_TILE_HALF,
   FLOOR_TILE_LENGTH,
   FLOOR_THICKNESS,
+  FLOOR_TOP_Y,
 };

@@ -177,8 +177,8 @@ describe('Game integration', () => {
       expect(game.creature.dangerLevel).toBeLessThan(0.05);
     });
 
-    it('passes overhead barrier while sliding', () => {
-      game.obstacles.acquireObstacle('overhead', 1, 0);
+    it('passes gate barrier while sliding', () => {
+      game.obstacles.acquireObstacle('gate', 1, 0);
       game.player.laneIndex = 1;
       game.player.x = 0;
       game.player.isSliding = true;
@@ -187,8 +187,8 @@ describe('Game integration', () => {
       expect(game.player.isStumbling).toBe(false);
     });
 
-    it('stumbles on overhead barrier while standing', () => {
-      game.obstacles.acquireObstacle('overhead', 1, 0);
+    it('stumbles on gate barrier while standing', () => {
+      game.obstacles.acquireObstacle('gate', 1, 0);
       game.player.laneIndex = 1;
       game.player.x = 0;
       game.player.y = 0;

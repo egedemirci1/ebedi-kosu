@@ -70,28 +70,28 @@ describe('ObstacleManager', () => {
       expect(obstacles.checkCollision(makePlayer({ x: LANES[1] + 0.86 }))).toBeNull();
     });
 
-    it('passes under overhead obstacles while sliding', () => {
-      insertObstacle(obstacles, 'overhead', 1, 0);
+    it('passes under gate obstacles while sliding', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ isSliding: true }))).toBeNull();
     });
 
-    it('hits overhead obstacles while standing', () => {
-      insertObstacle(obstacles, 'overhead', 1, 0);
+    it('hits gate obstacles while standing', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
       expect(obstacles.checkCollision(makePlayer())).not.toBeNull();
     });
 
-    it('passes over overhead obstacles with a high enough jump', () => {
-      insertObstacle(obstacles, 'overhead', 1, 0);
-      expect(obstacles.checkCollision(makePlayer({ y: 1.15 }))).toBeNull();
+    it('hits gate obstacles even during a high jump (no vaulting over)', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ y: 1.15 }))).not.toBeNull();
     });
 
-    it('hits overhead obstacles during a low hop', () => {
-      insertObstacle(obstacles, 'overhead', 1, 0);
+    it('hits gate obstacles during a low hop', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ y: 0.5 }))).not.toBeNull();
     });
 
-    it('passes under overhead obstacles while slide animation is active', () => {
-      insertObstacle(obstacles, 'overhead', 1, 0);
+    it('passes under gate obstacles while slide animation is active', () => {
+      insertObstacle(obstacles, 'gate', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ isSliding: false, slideBlend: 0.6 }))).toBeNull();
     });
 
@@ -125,17 +125,17 @@ describe('ObstacleManager', () => {
   });
 
   describe('pickType', () => {
-    it('includes overhead gates after early difficulty threshold', () => {
+    it('includes gate obstacles after early difficulty threshold', () => {
       obstacles.difficulty = 0.2;
       const types = new Set();
       for (let i = 0; i < 80; i++) types.add(obstacles.pickType());
-      expect(types.has('overhead')).toBe(true);
+      expect(types.has('gate')).toBe(true);
     });
 
-    it('avoids overhead gates in the first meters', () => {
+    it('avoids gate obstacles in the first meters', () => {
       obstacles.difficulty = 0.05;
       for (let i = 0; i < 40; i++) {
-        expect(obstacles.pickType()).not.toBe('overhead');
+        expect(obstacles.pickType()).not.toBe('gate');
       }
     });
   });

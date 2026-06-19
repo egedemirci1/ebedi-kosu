@@ -12,6 +12,7 @@ import {
   PCFSoftShadowMap,
   DoubleSide,
 } from 'three';
+import { GRAPHICS, applyRendererProfile } from './graphicsProfile.js';
 
 export const LANES = [-2.2, 0, 2.2];
 export const LANE_WIDTH = 2.2;
@@ -28,14 +29,15 @@ export function getViewportSize() {
 
 export function createRenderer() {
   const renderer = new WebGLRenderer({
-    antialias: true,
+    antialias: GRAPHICS.antialias,
     powerPreference: 'high-performance',
   });
   const { width, height } = getViewportSize();
   renderer.setSize(width, height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  applyRendererProfile(renderer);
+  if (GRAPHICS.shadows) {
+    renderer.shadowMap.type = PCFSoftShadowMap;
+  }
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   document.body.appendChild(renderer.domElement);
@@ -72,8 +74,10 @@ export function setupLights(scene) {
 
   const moon = new DirectionalLight(0x8888ff, 0.8);
   moon.position.set(5, 12, -3);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(1024, 1024);
+  moon.castShadow = GRAPHICS.shadows;
+  if (GRAPHICS.shadows) {
+    moon.shadow.mapSize.set(1024, 1024);
+  }
   moon.shadow.camera.near = 1;
   moon.shadow.camera.far = 90;
   moon.shadow.camera.left = -22;

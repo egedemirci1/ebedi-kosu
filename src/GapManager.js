@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TRACK_WIDTH, RECYCLE_AFTER_Z, FLOOR_THICKNESS, WALL_X, WALL_TILE_WIDTH } from './Track.js';
 import { LANES, LANE_WIDTH } from './scene.js';
+import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 const FLOOR_Y = -FLOOR_THICKNESS / 2;
 const GAP_TYPE_FULL = 'full';
@@ -8,6 +9,9 @@ const GAP_TYPE_BRIDGE = 'bridge';
 const BRIDGE_SPAWN_CHANCE = 0.28;
 const MIN_BRIDGE_GAP_WIDTH = 5.2;
 const MAX_BRIDGE_GAP_WIDTH = 7.8;
+/** Planks extend past gap edges so no void shows at entry/exit. */
+const BRIDGE_DECK_OVERHANG = 0.55;
+const BRIDGE_FLOOR_PAD = 0.28;
 
 const GAP_START_DISTANCE = 80;
 const MIN_GAP_WIDTH = 2.4;
@@ -66,7 +70,7 @@ export class GapManager {
 
     this.emberGeo = new THREE.SphereGeometry(0.06, 4, 4);
 
-    this.floorLegMat = new THREE.MeshStandardMaterial({
+    this.floorLegMat = createSurfaceMaterial({
       color: 0x1a1428,
       emissive: 0x2a1840,
       emissiveIntensity: 0.35,
@@ -74,7 +78,7 @@ export class GapManager {
       metalness: 0.08,
       fog: false,
     });
-    this.wallLegMat = new THREE.MeshStandardMaterial({
+    this.wallLegMat = createSurfaceMaterial({
       color: 0x2c2648,
       emissive: 0x1a1030,
       emissiveIntensity: 0.4,
@@ -88,7 +92,7 @@ export class GapManager {
     this.legCenterY = -legSpan / 2;
     this.wallLegGeo = new THREE.BoxGeometry(WALL_TILE_WIDTH, legSpan, WALL_LEG_DEPTH);
 
-    this.bridgeDeckMat = new THREE.MeshStandardMaterial({
+    this.bridgeDeckMat = createSurfaceMaterial({
       color: 0x5a4a78,
       emissive: 0x2a1840,
       emissiveIntensity: 0.28,
@@ -96,7 +100,7 @@ export class GapManager {
       metalness: 0.1,
       fog: false,
     });
-    this.bridgeRailMat = new THREE.MeshStandardMaterial({
+    this.bridgeRailMat = createSurfaceMaterial({
       color: 0x8877aa,
       emissive: 0x443366,
       emissiveIntensity: 0.35,
@@ -104,7 +108,7 @@ export class GapManager {
       metalness: 0.18,
       fog: false,
     });
-    this.bridgePlankGeo = new THREE.BoxGeometry(LANE_WIDTH * 0.78, FLOOR_THICKNESS, 0.72);
+    this.bridgePlankGeo = new THREE.BoxGeometry(LANE_WIDTH * 0.78, FLOOR_THICKNESS, 0.84);
     this.bridgeRailGeo = new THREE.BoxGeometry(0.07, 0.42, 1);
 
     this.track = null;
@@ -219,32 +223,34 @@ export class GapManager {
 
   addBridgeDeck(group, width, bridgeLane) {
     const laneX = LANES[bridgeLane];
-    const plankCount = Math.max(4, Math.ceil(width / 0.85));
-    const step = width / plankCount;
+    const deckLength = width + BRIDGE_DECK_OVERHANG;
+    const halfDeck = deckLength / 2;
+    const plankCount = Math.max(4, Math.ceil(deckLength / 0.82));
+    const step = deckLength / plankCount;
     const halfRail = LANE_WIDTH * 0.42;
 
     for (let i = 0; i < plankCount; i++) {
       const plank = new THREE.Mesh(this.bridgePlankGeo, this.bridgeDeckMat);
-      plank.position.set(laneX, FLOOR_Y, -width / 2 + (i + 0.5) * step);
+      plank.position.set(laneX, FLOOR_Y, -halfDeck + (i + 0.5) * step);
       group.add(plank);
     }
 
-    const railSpan = width - 0.2;
+    const railSpan = deckLength - 0.12;
     const railCount = Math.max(2, Math.ceil(railSpan / 0.95));
     for (const side of [-1, 1]) {
       for (let i = 0; i < railCount; i++) {
         const rail = new THREE.Mesh(this.bridgeRailGeo, this.bridgeRailMat);
-        rail.scale.z = railSpan / railCount * 0.92;
+        rail.scale.z = railSpan / railCount * 0.94;
         rail.position.set(
           laneX + side * halfRail,
           FLOOR_Y + 0.28,
-          -width / 2 + (i + 0.5) * (width / railCount)
+          -halfDeck + (i + 0.5) * (deckLength / railCount)
         );
         group.add(rail);
       }
     }
 
-    for (const z of [-width / 2 + 0.15, width / 2 - 0.15]) {
+    for (const z of [-halfDeck + 0.12, halfDeck - 0.12]) {
       for (const side of [-1, 1]) {
         const post = new THREE.Mesh(
           new THREE.BoxGeometry(0.1, 0.55, 0.1),
@@ -318,9 +324,19 @@ export class GapManager {
     for (let i = 0; i < this._activeCount; i++) {
       const gap = this.gaps[i];
       if (!gap.active) continue;
-      if (worldZ < gap.startZ || worldZ > gap.endZ) continue;
-      if (gap.type === GAP_TYPE_BRIDGE && laneIndex === gap.bridgeLane) return true;
-      return false;
+
+      if (gap.type === GAP_TYPE_BRIDGE && laneIndex === gap.bridgeLane) {
+        if (
+          worldZ >= gap.startZ - BRIDGE_FLOOR_PAD &&
+          worldZ <= gap.endZ + BRIDGE_FLOOR_PAD
+        ) {
+          return true;
+        }
+      }
+
+      if (worldZ >= gap.startZ && worldZ <= gap.endZ) {
+        return false;
+      }
     }
     return true;
   }
