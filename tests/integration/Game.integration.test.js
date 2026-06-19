@@ -92,9 +92,23 @@ describe('Game integration', () => {
     it('triggers fell game over when player drops below void threshold', () => {
       const spy = vi.spyOn(game, 'gameOver');
       game.player.isFalling = true;
+      game._fallScreamPlayed = true;
       game.player.y = -3.1;
       game.update(0.016);
       expect(spy).toHaveBeenCalledWith('fell');
+    });
+
+    it('plays fall scream once when void fall begins', () => {
+      game._fallScreamPlayed = false;
+      game.player.onGround = true;
+      game.player.isJumping = false;
+      game.player.isFalling = false;
+      game.player.update(0.016, false, false);
+      expect(game.player.isFalling).toBe(true);
+      game.update(0.016);
+      expect(game.sfx.playFallScream).toHaveBeenCalledTimes(1);
+      game.update(0.016);
+      expect(game.sfx.playFallScream).toHaveBeenCalledTimes(1);
     });
 
     it('skips obstacle stumble while ghost is active during update', () => {
@@ -111,6 +125,77 @@ describe('Game integration', () => {
       game.update(0.016);
       expect(game.boosters.isSpeedActive()).toBe(true);
       expect(game.ui.boosterSpeed.classList.contains('active')).toBe(true);
+    });
+
+    it('does not collect coin while jumping far above it', () => {
+      game.coins.acquireCoin(1, 0);
+      game.coins.coins[game.coins._activeCount - 1].y = 0.85;
+      game.player.laneIndex = 1;
+      game.player.x = 0;
+      game.player.onGround = false;
+      game.player.isJumping = true;
+      game.player.vy = 0;
+      game.player.y = 1.8;
+      game.update(0.016);
+      expect(game.sessionCoins).toBe(0);
+    });
+
+    it('collects coin at ground level and persists session count', () => {
+      game.coins.acquireCoin(1, 0);
+      game.coins.coins[game.coins._activeCount - 1].y = 0.85;
+      game.player.laneIndex = 1;
+      game.player.x = 0;
+      game.player.y = 0;
+      game.update(0.016);
+      expect(game.sessionCoins).toBe(1);
+      expect(game.sfx.playCoinPickup).toHaveBeenCalled();
+    });
+
+    it('does not collect booster while jumping far above floating sign', () => {
+      game.pickups.acquirePickup('jump', 1, 0);
+      game.pickups.pickups[game.pickups._activeCount - 1].y = 0.95;
+      game.player.laneIndex = 1;
+      game.player.x = 0;
+      game.player.onGround = false;
+      game.player.isJumping = true;
+      game.player.vy = 0;
+      game.player.y = 1.7;
+      game.update(0.016);
+      expect(game.boosters.isSuperJumpActive()).toBe(false);
+    });
+
+    it('does not pull creature closer when speed booster is active', () => {
+      game.distance = 250;
+      game.boosters.activate('speed');
+      game.creature.chaseDistance = 14;
+      game.creature.targetDistance = 14;
+      game.player.isStumbling = false;
+
+      for (let i = 0; i < 40; i++) game.update(0.05);
+
+      expect(game.creature.targetDistance).toBe(14);
+      expect(game.creature.dangerLevel).toBeLessThan(0.05);
+    });
+
+    it('passes overhead barrier while sliding', () => {
+      game.obstacles.acquireObstacle('overhead', 1, 0);
+      game.player.laneIndex = 1;
+      game.player.x = 0;
+      game.player.isSliding = true;
+      game.player.slideBlend = 1;
+      game.update(0.016);
+      expect(game.player.isStumbling).toBe(false);
+    });
+
+    it('stumbles on overhead barrier while standing', () => {
+      game.obstacles.acquireObstacle('overhead', 1, 0);
+      game.player.laneIndex = 1;
+      game.player.x = 0;
+      game.player.y = 0;
+      game.player.isSliding = false;
+      game.player.slideBlend = 0;
+      game.update(0.016);
+      expect(game.player.isStumbling).toBe(true);
     });
   });
 

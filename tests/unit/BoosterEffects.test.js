@@ -28,7 +28,7 @@ describe('BoosterEffects', () => {
       effects.activate('jump');
       effects.update(3);
       effects.activate('jump');
-      expect(effects.jumpTimer).toBe(JUMP_DURATION);
+      expect(effects.jumpTimer).toBe(effects.durations.jump);
     });
   });
 
@@ -78,7 +78,7 @@ describe('BoosterEffects', () => {
       effects.activate('ghost');
       effects.update(3);
       effects.activate('ghost');
-      expect(effects.ghostTimer).toBe(GHOST_DURATION);
+      expect(effects.ghostTimer).toBe(effects.durations.ghost);
     });
 
     it('timed boosters expire independently', () => {
@@ -103,6 +103,17 @@ describe('BoosterEffects', () => {
       effects.activate('speed');
       effects.update(SPEED_DURATION - 0.01);
       expect(effects.getSpeedMultiplier()).toBe(SPEED_MULTIPLIER);
+    });
+  });
+
+  describe('custom durations', () => {
+    it('uses injected durations on activate', () => {
+      const custom = new BoosterEffects({ ghost: 8, jump: 9, speed: 6 });
+      custom.activate('ghost');
+      expect(custom.ghostTimer).toBe(8);
+      custom.setDurations({ ghost: 10 });
+      custom.activate('ghost');
+      expect(custom.ghostTimer).toBe(10);
     });
   });
 

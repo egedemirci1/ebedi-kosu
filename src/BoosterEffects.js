@@ -5,10 +5,20 @@ export const SPEED_MULTIPLIER = 1.3;
 export const SUPER_JUMP_VY = 13.8;
 
 export class BoosterEffects {
-  constructor() {
+  constructor(durations) {
+    this.durations = {
+      ghost: GHOST_DURATION,
+      jump: JUMP_DURATION,
+      speed: SPEED_DURATION,
+      ...durations,
+    };
     this.ghostTimer = 0;
     this.jumpTimer = 0;
     this.speedTimer = 0;
+  }
+
+  setDurations(durations) {
+    Object.assign(this.durations, durations);
   }
 
   reset() {
@@ -34,15 +44,17 @@ export class BoosterEffects {
   }
 
   activate(type) {
+    const duration = this.durations[type];
+    if (!duration) return;
     switch (type) {
       case 'ghost':
-        this.ghostTimer = GHOST_DURATION;
+        this.ghostTimer = duration;
         break;
       case 'jump':
-        this.jumpTimer = JUMP_DURATION;
+        this.jumpTimer = duration;
         break;
       case 'speed':
-        this.speedTimer = SPEED_DURATION;
+        this.speedTimer = duration;
         break;
       default:
         break;

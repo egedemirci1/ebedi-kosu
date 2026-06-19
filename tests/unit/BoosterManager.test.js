@@ -158,6 +158,29 @@ describe('BoosterManager', () => {
       expect(manager.checkCollection(LANES[1] + 0.86, 1)).toBeNull();
       expect(manager.checkCollection(LANES[1] + 0.84, 1)).not.toBeNull();
     });
+
+    it('rejects floating pickup when player is jumping far above it', () => {
+      insertPickup(manager, 'jump', 1, 0);
+      const pickup = manager.pickups[manager._activeCount - 1];
+      pickup.y = 0.95;
+      expect(manager.checkCollection(LANES[1], 1, 1.6)).toBeNull();
+    });
+
+    it('rejects speed pad when player is airborne above it', () => {
+      insertPickup(manager, 'speed', 1, 0);
+      manager.pickups[manager._activeCount - 1].y = 0.03;
+      expect(manager.checkCollection(LANES[1], 1, 1.2)).toBeNull();
+    });
+
+    it('collects speed pad while sliding on the ground', () => {
+      insertPickup(manager, 'speed', 1, 0);
+      expect(manager.checkCollection(LANES[1], 1, 0, true)).not.toBeNull();
+    });
+
+    it('collects floating booster while sliding on the ground', () => {
+      insertPickup(manager, 'jump', 1, 0);
+      expect(manager.checkCollection(LANES[1], 1, 0, true)).not.toBeNull();
+    });
   });
 
   describe('pickup lifecycle', () => {

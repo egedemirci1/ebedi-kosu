@@ -7,10 +7,18 @@ const OBSTACLE_DEFS = {
   low: { height: 1.05, meshY: 0.525, jumpable: true, slideUnder: false },
   barrier: { height: 1.2, meshY: 0.6, jumpable: true, slideUnder: false },
   tall: { height: 3.4, meshY: 1.7, jumpable: false, slideUnder: false },
-  overhead: { height: 0.4, meshY: 2.05, jumpable: false, slideUnder: true },
+  overhead: {
+    height: 0.32,
+    clearance: 1.22,
+    meshY: 0,
+    jumpable: false,
+    slideUnder: true,
+    beamSpan: LANE_WIDTH + 0.15,
+  },
 };
 
 const OBSTACLE_TYPES = Object.keys(OBSTACLE_DEFS);
+const SPIKE_TYPES = new Set(['low', 'tall']);
 const MAX_PER_TYPE = 24;
 const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
@@ -25,11 +33,194 @@ const TEMP_QUAT = new THREE.Quaternion();
 const TEMP_SCALE = new THREE.Vector3(1, 1, 1);
 const TEMP_MATRIX = new THREE.Matrix4();
 
-function buildSpikeClusterGeo(height, spikes) {
+function createStoneTexture(variant = 'barrier') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  const palettes = {
+    barrier: { a: '#1e1828', b: '#322c42', c: '#4a4260', d: '#14101c' },
+    low: { a: '#686098', b: '#8278b0', c: '#9c94c8', d: '#504870' },
+    tall: { a: '#605888', b: '#7a70a0', c: '#948cb8', d: '#484068' },
+    overhead: { a: '#1a1626', b: '#2e2840', c: '#464060', d: '#100e18' },
+    spikeBase: { a: '#282238', b: '#383050', c: '#484060', d: '#181420' },
+  };
+  const p = palettes[variant] ?? palettes.barrier;
+  const isSpike = variant === 'low' || variant === 'tall';
+  const isSpikeBase = variant === 'spikeBase';
+
+  const bg = ctx.createLinearGradient(0, 0, 256, 256);
+  bg.addColorStop(0, p.c);
+  bg.addColorStop(0.45, p.b);
+  bg.addColorStop(1, p.a);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 256, 256);
+
+  if (isSpike) {
+    const lift = ctx.createLinearGradient(0, 0, 0, 256);
+    lift.addColorStop(0, 'rgba(220, 210, 255, 0.55)');
+    lift.addColorStop(0.5, 'rgba(180, 170, 220, 0.2)');
+    lift.addColorStop(1, 'rgba(120, 110, 160, 0.08)');
+    ctx.fillStyle = lift;
+    ctx.fillRect(0, 0, 256, 256);
+  }
+
+  for (let i = 0; i < (isSpike ? 70 : 140); i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const r = 4 + Math.random() * 22;
+    ctx.fillStyle = isSpike
+      ? Math.random() > 0.35
+        ? p.c
+        : p.b
+      : Math.random() > 0.5
+        ? p.d
+        : p.c;
+    ctx.globalAlpha = isSpike ? 0.04 + Math.random() * 0.08 : 0.08 + Math.random() * 0.14;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = isSpike ? 'rgba(80, 70, 120, 0.22)' : 'rgba(10, 8, 16, 0.55)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < (isSpike ? 5 : 9); i++) {
+    ctx.beginPath();
+    let x = Math.random() * 256;
+    let y = Math.random() * 256;
+    ctx.moveTo(x, y);
+    for (let j = 0; j < 4; j++) {
+      x += (Math.random() - 0.5) * 70;
+      y += (Math.random() - 0.5) * 70;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(90, 70, 130, 0.22)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(Math.random() * 256, Math.random() * 256);
+    ctx.lineTo(Math.random() * 256, Math.random() * 256);
+    ctx.stroke();
+  }
+
+  if (variant === 'barrier') {
+    ctx.strokeStyle = 'rgba(160, 130, 220, 0.35)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(128, 52);
+    ctx.lineTo(168, 148);
+    ctx.lineTo(128, 204);
+    ctx.lineTo(88, 148);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(120, 90, 180, 0.12)';
+    ctx.fill();
+  }
+
+  if (variant === 'overhead') {
+    const glow = ctx.createLinearGradient(0, 200, 0, 256);
+    glow.addColorStop(0, 'rgba(140, 100, 220, 0)');
+    glow.addColorStop(0.55, 'rgba(160, 120, 255, 0.35)');
+    glow.addColorStop(1, 'rgba(200, 160, 255, 0.55)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 190, 256, 66);
+  }
+
+  if (isSpikeBase) {
+    ctx.strokeStyle = 'rgba(120, 100, 170, 0.16)';
+    ctx.lineWidth = 1;
+    for (let y = 32; y < 256; y += 32) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(256, y);
+      ctx.stroke();
+    }
+    const floorSheen = ctx.createLinearGradient(0, 0, 256, 0);
+    floorSheen.addColorStop(0, 'rgba(100, 80, 150, 0.08)');
+    floorSheen.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+    floorSheen.addColorStop(1, 'rgba(100, 80, 150, 0.08)');
+    ctx.fillStyle = floorSheen;
+    ctx.fillRect(0, 0, 256, 256);
+  }
+
+  if (isSpike) {
+    const sheen = ctx.createLinearGradient(0, 0, 256, 200);
+    sheen.addColorStop(0, 'rgba(240, 230, 255, 0.45)');
+    sheen.addColorStop(0.6, 'rgba(190, 180, 235, 0.15)');
+    sheen.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.fillStyle = 'rgba(230, 215, 255, 0.22)';
+    for (let i = 0; i < 10; i++) {
+      const x = 40 + Math.random() * 176;
+      const y = 40 + Math.random() * 176;
+      ctx.beginPath();
+      ctx.arc(x, y, 8 + Math.random() * 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createStoneMaterial(variant) {
+  const emissiveByVariant = {
+    barrier: { color: 0x443366, intensity: 0.1, tint: 0xffffff, roughness: 0.9 },
+    low: { color: 0x9988dd, intensity: 0.22, tint: 0xe8e2ff, roughness: 0.68 },
+    tall: { color: 0x8877cc, intensity: 0.18, tint: 0xe0daf8, roughness: 0.72 },
+    spikeBase: { color: 0x443355, intensity: 0.06, tint: 0xb0a8c8, roughness: 0.88 },
+    overhead: { color: 0x554488, intensity: 0.14, tint: 0xffffff, roughness: 0.9 },
+  };
+  const em = emissiveByVariant[variant] ?? emissiveByVariant.barrier;
+
+  return new THREE.MeshStandardMaterial({
+    map: createStoneTexture(variant),
+    color: em.tint,
+    emissive: em.color,
+    emissiveIntensity: em.intensity,
+    roughness: em.roughness,
+    metalness: 0.03,
+    fog: true,
+  });
+}
+
+function buildSpikeBaseGeo(height, platformW = 1.45) {
+  const baseY = -height / 2;
+  const parts = [];
+
+  const platform = new THREE.BoxGeometry(platformW, 0.2, 0.72);
+  platform.translate(0, baseY + 0.1, 0);
+  parts.push(platform);
+
+  const chunks = [
+    { x: -0.42, z: 0.12, sx: 0.28, sy: 0.16, sz: 0.22 },
+    { x: 0.38, z: -0.14, sx: 0.24, sy: 0.14, sz: 0.2 },
+    { x: 0.08, z: 0.18, sx: 0.18, sy: 0.12, sz: 0.16 },
+  ];
+  for (const c of chunks) {
+    const rock = new THREE.BoxGeometry(c.sx, c.sy, c.sz);
+    rock.translate(c.x, baseY + 0.2 + c.sy / 2, c.z);
+    parts.push(rock);
+  }
+
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function buildSpikeConesGeo(height, spikes) {
   const baseY = -height / 2;
   const parts = spikes.map(({ x, z, h, r }) => {
-    const cone = new THREE.ConeGeometry(r, h, 4);
-    cone.translate(x, baseY + h / 2, z);
+    const cone = new THREE.ConeGeometry(r, h, 6);
+    cone.translate(x, baseY + 0.2 + h / 2, z);
     return cone;
   });
   const merged = mergeGeometries(parts, false);
@@ -37,31 +228,117 @@ function buildSpikeClusterGeo(height, spikes) {
   return merged;
 }
 
+function buildBarrierGeometry(def) {
+  const h = def.height;
+  const baseY = -h / 2;
+  const parts = [];
+
+  const plinth = new THREE.BoxGeometry(1.78, 0.16, 0.6);
+  plinth.translate(0, baseY + 0.08, 0);
+  parts.push(plinth);
+
+  const body = new THREE.BoxGeometry(1.5, h * 0.76, 0.44);
+  body.translate(0, baseY + 0.16 + (h * 0.76) / 2, 0);
+  parts.push(body);
+
+  const cap = new THREE.BoxGeometry(1.64, 0.14, 0.54);
+  cap.translate(0, baseY + h - 0.07, 0);
+  parts.push(cap);
+
+  for (const x of [-0.64, 0.64]) {
+    const fin = new THREE.BoxGeometry(0.14, h * 0.52, 0.36);
+    fin.translate(x, baseY + 0.16 + (h * 0.52) / 2, 0);
+    parts.push(fin);
+  }
+
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function buildOverheadGateGeometry(def) {
+  const beamW = def.beamSpan ?? LANE_WIDTH + 0.15;
+  const beamH = def.height;
+  const beamBottom = def.clearance ?? 1.22;
+  const beamY = beamBottom + beamH / 2;
+  const postH = beamBottom;
+  const postW = 0.22;
+  const postD = 0.52;
+  const parts = [];
+
+  const sill = new THREE.BoxGeometry(beamW, 0.1, 0.48);
+  sill.translate(0, 0.05, 0);
+  parts.push(sill);
+
+  for (const x of [-beamW / 2 + postW / 2, beamW / 2 - postW / 2]) {
+    const foot = new THREE.BoxGeometry(postW * 1.7, 0.08, postD * 1.15);
+    foot.translate(x, 0.04, 0);
+    parts.push(foot);
+
+    const post = new THREE.BoxGeometry(postW, postH, postD);
+    post.translate(x, postH / 2, 0);
+    parts.push(post);
+  }
+
+  const beam = new THREE.BoxGeometry(beamW, beamH, 0.58);
+  beam.translate(0, beamY, 0);
+  parts.push(beam);
+
+  const keystone = new THREE.BoxGeometry(0.42, 0.24, 0.64);
+  keystone.translate(0, beamY + beamH / 2 + 0.1, 0);
+  parts.push(keystone);
+
+  const lip = new THREE.BoxGeometry(beamW * 0.94, 0.1, 0.62);
+  lip.translate(0, beamBottom - 0.04, 0);
+  parts.push(lip);
+
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function obstacleTopY(type, def) {
+  if (type === 'overhead') {
+    return (def.clearance ?? 1.22) + def.height;
+  }
+  return def.meshY + def.height / 2;
+}
+
+function obstacleBeamBottom(type, def) {
+  if (type === 'overhead') return def.clearance ?? 1.22;
+  return null;
+}
+
 function buildObstacleGeometry(type, def) {
   if (type === 'barrier') {
-    return new THREE.BoxGeometry(1.6, def.height, 0.5);
+    return buildBarrierGeometry(def);
   }
 
   if (type === 'overhead') {
-    return new THREE.BoxGeometry(LANE_WIDTH + 0.35, def.height, 0.55);
+    return buildOverheadGateGeometry(def);
   }
 
   if (type === 'low') {
-    return buildSpikeClusterGeo(def.height, [
-      { x: 0, z: 0, h: 1.02, r: 0.13 },
-      { x: -0.38, z: 0.06, h: 0.88, r: 0.1 },
-      { x: 0.34, z: -0.1, h: 0.95, r: 0.11 },
-      { x: -0.12, z: -0.14, h: 0.78, r: 0.09 },
-      { x: 0.22, z: 0.12, h: 0.9, r: 0.1 },
+    return buildSpikeConesGeo(def.height, [
+      { x: 0, z: 0, h: 0.82, r: 0.12 },
+      { x: -0.38, z: 0.06, h: 0.72, r: 0.1 },
+      { x: 0.34, z: -0.1, h: 0.76, r: 0.11 },
+      { x: -0.12, z: -0.14, h: 0.62, r: 0.09 },
+      { x: 0.22, z: 0.12, h: 0.7, r: 0.1 },
     ]);
   }
 
-  return buildSpikeClusterGeo(def.height, [
-    { x: -0.45, z: 0, h: 3.15, r: 0.17 },
-    { x: -0.12, z: 0.08, h: 3.4, r: 0.19 },
-    { x: 0.28, z: -0.06, h: 2.95, r: 0.16 },
-    { x: 0.52, z: 0.05, h: 3.25, r: 0.18 },
+  return buildSpikeConesGeo(def.height, [
+    { x: -0.45, z: 0, h: 2.95, r: 0.16 },
+    { x: -0.12, z: 0.08, h: 3.18, r: 0.18 },
+    { x: 0.28, z: -0.06, h: 2.78, r: 0.15 },
+    { x: 0.52, z: 0.05, h: 3.05, r: 0.17 },
   ]);
+}
+
+function buildSpikeBaseGeometry(type, def) {
+  const platformW = type === 'tall' ? 1.58 : 1.45;
+  return buildSpikeBaseGeo(def.height, platformW);
 }
 
 export class ObstacleManager {
@@ -77,38 +354,14 @@ export class ObstacleManager {
     this._activeCount = 0;
 
     this.geometries = {};
-    this.materials = {
-      barrier: new THREE.MeshStandardMaterial({
-        color: 0xff6644,
-        emissive: 0x441100,
-        emissiveIntensity: 0.5,
-        roughness: 0.5,
-        fog: false,
-      }),
-      low: new THREE.MeshStandardMaterial({
-        color: 0xffaa22,
-        emissive: 0x442200,
-        emissiveIntensity: 0.4,
-        roughness: 0.5,
-        fog: false,
-      }),
-      tall: new THREE.MeshStandardMaterial({
-        color: 0xcc2244,
-        emissive: 0x440011,
-        emissiveIntensity: 0.5,
-        roughness: 0.5,
-        fog: false,
-      }),
-      overhead: new THREE.MeshStandardMaterial({
-        color: 0xff88cc,
-        emissive: 0x440022,
-        emissiveIntensity: 0.45,
-        roughness: 0.45,
-        fog: false,
-      }),
-    };
+    this.materials = {};
+    for (const type of OBSTACLE_TYPES) {
+      this.materials[type] = createStoneMaterial(type);
+    }
 
     this.instancedMeshes = {};
+    this.baseInstancedMeshes = {};
+    this.baseMaterial = createStoneMaterial('spikeBase');
     this.freeSlots = {};
 
     for (const type of OBSTACLE_TYPES) {
@@ -122,6 +375,19 @@ export class ObstacleManager {
       );
       mesh.castShadow = true;
       mesh.frustumCulled = false;
+
+      if (SPIKE_TYPES.has(type)) {
+        const baseMesh = new THREE.InstancedMesh(
+          buildSpikeBaseGeometry(type, def),
+          this.baseMaterial,
+          MAX_PER_TYPE
+        );
+        baseMesh.castShadow = true;
+        baseMesh.frustumCulled = false;
+        scene.add(baseMesh);
+        this.baseInstancedMeshes[type] = baseMesh;
+      }
+
       scene.add(mesh);
 
       this.instancedMeshes[type] = mesh;
@@ -129,9 +395,15 @@ export class ObstacleManager {
 
       for (let i = 0; i < MAX_PER_TYPE; i++) {
         mesh.setMatrixAt(i, HIDDEN_MATRIX);
+        if (this.baseInstancedMeshes[type]) {
+          this.baseInstancedMeshes[type].setMatrixAt(i, HIDDEN_MATRIX);
+        }
         this.freeSlots[type].push(i);
       }
       mesh.instanceMatrix.needsUpdate = true;
+      if (this.baseInstancedMeshes[type]) {
+        this.baseInstancedMeshes[type].instanceMatrix.needsUpdate = true;
+      }
     }
   }
 
@@ -181,16 +453,27 @@ export class ObstacleManager {
     const mesh = this.instancedMeshes[type];
     mesh.setMatrixAt(slot, HIDDEN_MATRIX);
     mesh.instanceMatrix.needsUpdate = true;
+    const baseMesh = this.baseInstancedMeshes[type];
+    if (baseMesh) {
+      baseMesh.setMatrixAt(slot, HIDDEN_MATRIX);
+      baseMesh.instanceMatrix.needsUpdate = true;
+    }
     this.freeSlots[type].push(slot);
   }
 
   setInstanceMatrix(entry) {
     const def = OBSTACLE_DEFS[entry.type];
-    TEMP_POS.set(LANES[entry.lane], def.meshY, entry.z);
+    const anchorY = entry.type === 'overhead' ? 0 : def.meshY;
+    TEMP_POS.set(LANES[entry.lane], anchorY, entry.z);
     TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
     const mesh = this.instancedMeshes[entry.type];
     mesh.setMatrixAt(entry.slot, TEMP_MATRIX);
     mesh.instanceMatrix.needsUpdate = true;
+    const baseMesh = this.baseInstancedMeshes[entry.type];
+    if (baseMesh) {
+      baseMesh.setMatrixAt(entry.slot, TEMP_MATRIX);
+      baseMesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   acquireObstacle(type, lane, z) {
@@ -205,7 +488,8 @@ export class ObstacleManager {
       entry.lane = lane;
       entry.z = z;
       entry.slot = slot;
-      entry.topY = def.meshY + def.height / 2;
+      entry.topY = obstacleTopY(type, def);
+      entry.beamBottom = obstacleBeamBottom(type, def);
       entry.jumpable = def.jumpable;
       entry.slideUnder = def.slideUnder ?? false;
       entry.active = true;
@@ -215,7 +499,8 @@ export class ObstacleManager {
         lane,
         z,
         slot,
-        topY: def.meshY + def.height / 2,
+        topY: obstacleTopY(type, def),
+        beamBottom: obstacleBeamBottom(type, def),
         jumpable: def.jumpable,
         slideUnder: def.slideUnder ?? false,
         active: true,
@@ -249,13 +534,28 @@ export class ObstacleManager {
 
   pickType() {
     const r = Math.random();
-    if (this.difficulty < 0.3) return r < 0.6 ? 'barrier' : 'low';
+
+    if (this.difficulty < 0.12) {
+      return r < 0.55 ? 'barrier' : 'low';
+    }
+
+    if (this.difficulty < 0.35) {
+      if (r < 0.14) return 'overhead';
+      if (r < 0.62) return 'barrier';
+      return 'low';
+    }
+
     if (this.difficulty < 0.6) {
-      if (r < 0.4) return 'barrier';
-      if (r < 0.75) return 'low';
+      if (r < 0.2) return 'overhead';
+      if (r < 0.48) return 'barrier';
+      if (r < 0.78) return 'low';
       return 'tall';
     }
-    return OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+
+    if (r < 0.24) return 'overhead';
+    if (r < 0.5) return 'barrier';
+    if (r < 0.74) return 'low';
+    return 'tall';
   }
 
   releaseObstacle(entry) {
@@ -283,7 +583,8 @@ export class ObstacleManager {
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
 
       if (obs.slideUnder) {
-        if (player.isSliding) continue;
+        if (player.isSlideActive ?? player.isSliding) continue;
+        if (obs.beamBottom != null && feetY >= obs.beamBottom - CLEARANCE) continue;
         return obs;
       }
 

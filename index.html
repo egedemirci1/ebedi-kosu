@@ -8,15 +8,14 @@
   </head>
   <body>
     <div id="ui">
+      <div id="speed-fx" class="speed-fx hidden" aria-hidden="true"></div>
+      <div id="jump-fx" class="jump-fx hidden" aria-hidden="true"></div>
+      <div id="ghost-fx" class="ghost-fx hidden" aria-hidden="true"></div>
       <div id="hud">
         <div class="hud-left">
           <div class="hud-item">
             <span class="label">Mesafe</span>
             <span id="score">0</span>m
-          </div>
-          <div class="hud-item coins">
-            <span class="label">Coin</span>
-            <span id="coin-count">0</span>
           </div>
           <div class="hud-item danger">
             <span class="label">Tehlike</span>
@@ -28,10 +27,20 @@
             <div id="booster-speed" class="booster-chip speed">Hız <span class="booster-time"></span></div>
           </div>
         </div>
-        <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
+        <div class="hud-right">
+          <div class="hud-item coins hud-coin-chip">
+            <span class="label">Altın</span>
+            <span id="coin-count">0</span>
+          </div>
+          <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
+        </div>
       </div>
 
       <div id="start-screen" class="overlay">
+        <button id="shop-open-btn" class="menu-corner-btn shop-open-btn" type="button">
+          <span class="shop-open-icon">◎</span>
+          Mağaza
+        </button>
         <aside id="leaderboard-panel" class="leaderboard-panel">
           <h2 class="leaderboard-title">En İyiler</h2>
           <ol id="leaderboard-list" class="leaderboard-list"></ol>
@@ -56,9 +65,9 @@
         <div class="controls-info">
           <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
           <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
-          <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in / yerde kay</div>
+          <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in / yerde kay (alt bariyerlerden geç)</div>
           <div>Parlayan güçlendiricileri topla — hayalet, süper zıpla, hız</div>
-          <div>Altın coinleri topla — koşu boyunca birikir</div>
+          <div>Altın topla — koşu boyunca birikir</div>
           <div><kbd>Esc</kbd> — Duraklat</div>
           <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
         </div>
@@ -73,6 +82,58 @@
           </button>
         </div>
         <button id="start-btn">KOŞ!</button>
+
+        <div id="shop-modal" class="shop-modal hidden" role="dialog" aria-labelledby="shop-title" aria-modal="true">
+          <button id="shop-backdrop" class="shop-backdrop" type="button" aria-label="Mağazayı kapat"></button>
+          <div class="shop-panel">
+            <header class="shop-header">
+              <button id="shop-close-btn" class="shop-close-btn" type="button" aria-label="Kapat">×</button>
+              <div class="shop-heading">
+                <h2 id="shop-title" class="shop-title">Altın Mağazası</h2>
+                <p class="shop-subtitle">Güçlendirici sürelerini altınla yükselt</p>
+              </div>
+            </header>
+            <div class="shop-balance">
+              <span class="shop-balance-label">Altın</span>
+              <span id="shop-coin-balance" class="shop-balance-value">0</span>
+            </div>
+            <div class="shop-items">
+              <article class="shop-item ghost" data-booster="ghost">
+                <h3 class="shop-item-name">
+                  Hayalet
+                  <span class="shop-item-level">Sv. <span data-shop-level>0</span></span>
+                </h3>
+                <p class="shop-item-desc">Duvarlardan geç, hasar alma</p>
+                <p class="shop-item-stat"><span data-shop-duration>5</span> sn</p>
+                <button class="shop-upgrade-btn" type="button" data-shop-upgrade="ghost">
+                  Satın al · <span data-shop-cost>50</span>
+                </button>
+              </article>
+              <article class="shop-item jump" data-booster="jump">
+                <h3 class="shop-item-name">
+                  Süper Zıpla
+                  <span class="shop-item-level">Sv. <span data-shop-level>0</span></span>
+                </h3>
+                <p class="shop-item-desc">Yüksek zıpla, engelleri aş</p>
+                <p class="shop-item-stat"><span data-shop-duration>5</span> sn</p>
+                <button class="shop-upgrade-btn" type="button" data-shop-upgrade="jump">
+                  Satın al · <span data-shop-cost>50</span>
+                </button>
+              </article>
+              <article class="shop-item speed" data-booster="speed">
+                <h3 class="shop-item-name">
+                  Hız
+                  <span class="shop-item-level">Sv. <span data-shop-level>0</span></span>
+                </h3>
+                <p class="shop-item-desc">Koşu hızını artır</p>
+                <p class="shop-item-stat"><span data-shop-duration>4</span> sn</p>
+                <button class="shop-upgrade-btn" type="button" data-shop-upgrade="speed">
+                  Satın al · <span data-shop-cost>50</span>
+                </button>
+              </article>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="pause-screen" class="overlay hidden">

@@ -5,12 +5,14 @@ import { Creature } from './Creature.js';
 import { Track } from './Track.js';
 import { ObstacleManager } from './ObstacleManager.js';
 import { GapManager } from './GapManager.js';
-import { ChaseMusic } from './ChaseMusic.js';
+import { ChaseMusic, musicTierForDistance } from './ChaseMusic.js';
 import { Sfx } from './Sfx.js';
 import { Environment } from './Environment.js';
 import { BoosterManager } from './BoosterManager.js';
 import { BoosterEffects } from './BoosterEffects.js';
+import { BoosterShop, SHOP_BOOSTER_TYPES } from './BoosterShop.js';
 import { CoinManager } from './CoinManager.js';
+import { DayCycle } from './DayCycle.js';
 import { fetchTopScores, submitScore, isValidPlayerName } from './Leaderboard.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
@@ -35,7 +37,8 @@ export class Game {
     this.gaps.setTrack(this.track);
     this.pickups = new BoosterManager(this.scene);
     this.coins = new CoinManager(this.scene);
-    this.boosters = new BoosterEffects();
+    this.shop = new BoosterShop();
+    this.boosters = new BoosterEffects(this.shop.getDurations());
 
     this.obstacles.setGapManager(this.gaps);
     this.gaps.setObstacleManager(this.obstacles);
@@ -51,12 +54,16 @@ export class Game {
 
     this.state = 'menu';
     this.distance = 0;
+    this.musicTier = 0;
     this.sessionCoins = 0;
     this.baseSpeed = 14;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
     this._needsRender = true;
     this._lastCamFov = 65;
+    this._fallScreamPlayed = false;
+    this.dayCycle = new DayCycle();
+    this._cycleRimOpacity = 0.04;
     this.clock = new THREE.Clock();
     this.music = new ChaseMusic();
     this.sfx = new Sfx(this.music);
@@ -87,6 +94,14 @@ export class Game {
       leaderboardList: document.getElementById('leaderboard-list'),
       leaderboardEmpty: document.getElementById('leaderboard-empty'),
       leaderboardError: document.getElementById('leaderboard-error'),
+      shopOpenBtn: document.getElementById('shop-open-btn'),
+      shopModal: document.getElementById('shop-modal'),
+      shopBackdrop: document.getElementById('shop-backdrop'),
+      shopCloseBtn: document.getElementById('shop-close-btn'),
+      shopCoinBalance: document.getElementById('shop-coin-balance'),
+      speedFx: document.getElementById('speed-fx'),
+      jumpFx: document.getElementById('jump-fx'),
+      ghostFx: document.getElementById('ghost-fx'),
     };
 
     this.music.setEnabled(this.loadAudioPref(MUSIC_PREF_KEY, true));
@@ -97,12 +112,32 @@ export class Game {
     this.bindUI();
     this.loadPlayerName();
     this.updateBestScoreUI();
+    this.updateShopUI();
     this.refreshLeaderboard();
     window.addEventListener('resize', () => this.onResize());
     window.visualViewport?.addEventListener('resize', () => this.onResize());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.state === 'playing') this.pause();
     });
+
+    this.applyDayCycleVisuals();
+  }
+
+  applyDayCycleVisuals() {
+    const state = this.dayCycle.state;
+    if (this.scene.fog) {
+      this.scene.fog.color.setHex(state.fog);
+      this.scene.fog.density = state.fogDensity;
+    }
+    this.lights.ambient.color.setHex(state.ambientColor);
+    this.lights.ambient.intensity = state.ambientIntensity;
+    this.lights.moon.color.setHex(state.moonColor);
+    this.lights.moon.intensity = state.moonIntensity;
+    this.lights.rim.material.color.setHex(state.rimColor);
+    this._cycleRimOpacity = state.rimOpacity;
+    this.lights.rim.material.opacity = this._cycleRimOpacity;
+    this.renderer.toneMappingExposure = state.exposure;
+    this.environment.applyDayCycle(state);
   }
 
   getTotalCoins() {
@@ -113,6 +148,70 @@ export class Game {
     this.sessionCoins += amount;
     const total = this.getTotalCoins() + amount;
     localStorage.setItem(TOTAL_COINS_KEY, String(total));
+  }
+
+  setTotalCoins(total) {
+    localStorage.setItem(TOTAL_COINS_KEY, String(Math.max(0, total)));
+  }
+
+  syncBoosterDurations() {
+    this.boosters.setDurations(this.shop.getDurations());
+  }
+
+  openShop() {
+    if (this.state !== 'menu') return;
+    this.shop.reload();
+    this.syncBoosterDurations();
+    this.updateShopUI();
+    this.ui.shopModal?.classList.remove('hidden');
+  }
+
+  closeShop() {
+    this.ui.shopModal?.classList.add('hidden');
+  }
+
+  isShopOpen() {
+    return this.ui.shopModal && !this.ui.shopModal.classList.contains('hidden');
+  }
+
+  updateShopUI() {
+    if (this.ui.shopCoinBalance) {
+      this.ui.shopCoinBalance.textContent = String(this.getTotalCoins());
+    }
+
+    const totalCoins = this.getTotalCoins();
+    for (const type of SHOP_BOOSTER_TYPES) {
+      const item = this.ui.shopModal?.querySelector(`.shop-item[data-booster="${type}"]`);
+      if (!item) continue;
+
+      const levelEl = item.querySelector('[data-shop-level]');
+      const durationEl = item.querySelector('[data-shop-duration]');
+      const costEl = item.querySelector('[data-shop-cost]');
+      const btn = item.querySelector('[data-shop-upgrade]');
+
+      const level = this.shop.getLevel(type);
+      const duration = this.shop.getDuration(type);
+      const cost = this.shop.getCost(type);
+      const maxed = this.shop.isMaxed(type);
+
+      if (levelEl) levelEl.textContent = String(level);
+      if (durationEl) durationEl.textContent = String(duration);
+      if (costEl) costEl.textContent = maxed ? '—' : String(cost);
+      if (btn) {
+        btn.disabled = maxed || cost === null || totalCoins < cost;
+        btn.textContent = maxed ? 'Maksimum' : `Satın al · ${cost}`;
+      }
+    }
+  }
+
+  purchaseBoosterUpgrade(type) {
+    const result = this.shop.tryPurchase(type, this.getTotalCoins());
+    if (!result.ok) return false;
+    this.setTotalCoins(result.newTotal);
+    this.syncBoosterDurations();
+    this.updateShopUI();
+    this.sfx.playCoinPickup();
+    return true;
   }
 
   getBestScore() {
@@ -274,6 +373,15 @@ export class Game {
     document.querySelectorAll('.audio-toggle-sfx').forEach((btn) => {
       btn.addEventListener('click', () => this.toggleSfx());
     });
+    this.ui.shopOpenBtn?.addEventListener('click', () => this.openShop());
+    this.ui.shopCloseBtn?.addEventListener('click', () => this.closeShop());
+    this.ui.shopBackdrop?.addEventListener('click', () => this.closeShop());
+    this.ui.shopModal?.querySelectorAll('[data-shop-upgrade]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const type = btn.getAttribute('data-shop-upgrade');
+        if (type) this.purchaseBoosterUpgrade(type);
+      });
+    });
   }
 
   isOppositePressed(code) {
@@ -293,8 +401,101 @@ export class Game {
 
   collectBooster(type) {
     this.boosters.activate(type);
-    this.sfx.playBoosterPickup();
+    this.sfx.playBoosterPickup(type);
+    if (type === 'speed') this.triggerSpeedFxFlash();
+    else if (type === 'jump') this.triggerJumpFxFlash();
+    else if (type === 'ghost') this.triggerGhostFxFlash();
     this.updateBoosterHUD();
+  }
+
+  updateSpeedFx() {
+    const fx = this.ui.speedFx;
+    if (!fx) return;
+    const active = this.boosters.isSpeedActive();
+    fx.classList.toggle('visible', active);
+    fx.classList.toggle('hidden', !active);
+    if (!active) fx.classList.remove('flash');
+  }
+
+  triggerSpeedFxFlash() {
+    const fx = this.ui.speedFx;
+    if (!fx) return;
+    fx.classList.remove('hidden');
+    fx.classList.add('visible', 'flash');
+    clearTimeout(this._speedFxFlashTimer);
+    this._speedFxFlashTimer = setTimeout(() => {
+      fx.classList.remove('flash');
+    }, 320);
+  }
+
+  hideSpeedFx() {
+    clearTimeout(this._speedFxFlashTimer);
+    const fx = this.ui.speedFx;
+    if (!fx) return;
+    fx.classList.add('hidden');
+    fx.classList.remove('visible', 'flash');
+  }
+
+  updateJumpFx() {
+    const fx = this.ui.jumpFx;
+    if (!fx) return;
+    const active = this.boosters.isSuperJumpActive();
+    fx.classList.toggle('visible', active);
+    fx.classList.toggle('hidden', !active);
+    if (!active) fx.classList.remove('flash');
+  }
+
+  triggerJumpFxFlash() {
+    const fx = this.ui.jumpFx;
+    if (!fx) return;
+    fx.classList.remove('hidden');
+    fx.classList.add('visible', 'flash');
+    clearTimeout(this._jumpFxFlashTimer);
+    this._jumpFxFlashTimer = setTimeout(() => {
+      fx.classList.remove('flash');
+    }, 420);
+  }
+
+  hideJumpFx() {
+    clearTimeout(this._jumpFxFlashTimer);
+    const fx = this.ui.jumpFx;
+    if (!fx) return;
+    fx.classList.add('hidden');
+    fx.classList.remove('visible', 'flash');
+  }
+
+  updateGhostFx() {
+    const fx = this.ui.ghostFx;
+    if (!fx) return;
+    const active = this.boosters.isGhostActive();
+    fx.classList.toggle('visible', active);
+    fx.classList.toggle('hidden', !active);
+    if (!active) fx.classList.remove('flash');
+  }
+
+  triggerGhostFxFlash() {
+    const fx = this.ui.ghostFx;
+    if (!fx) return;
+    fx.classList.remove('hidden');
+    fx.classList.add('visible', 'flash');
+    clearTimeout(this._ghostFxFlashTimer);
+    this._ghostFxFlashTimer = setTimeout(() => {
+      fx.classList.remove('flash');
+    }, 320);
+  }
+
+  hideGhostFx() {
+    clearTimeout(this._ghostFxFlashTimer);
+    const fx = this.ui.ghostFx;
+    if (!fx) return;
+    fx.classList.add('hidden');
+    fx.classList.remove('visible', 'flash');
+  }
+
+  hideBoosterFx() {
+    this.hideSpeedFx();
+    this.hideJumpFx();
+    this.hideGhostFx();
   }
 
   collectCoin() {
@@ -323,6 +524,10 @@ export class Game {
       const time = this.ui.boosterSpeed.querySelector('.booster-time');
       if (time) time.textContent = state.speed > 0 ? `${state.speed.toFixed(1)}s` : '';
     }
+
+    this.updateSpeedFx();
+    this.updateJumpFx();
+    this.updateGhostFx();
   }
 
   bindInput() {
@@ -331,6 +536,10 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') {
         e.preventDefault();
+        if (this.isShopOpen()) {
+          this.closeShop();
+          return;
+        }
         if (this.state === 'playing') this.pause();
         else if (this.state === 'paused') this.resume();
         return;
@@ -420,6 +629,7 @@ export class Game {
     this.player.wallBounceSide = 0;
     this.player.onGround = true;
     this.player.isFalling = false;
+    this._fallScreamPlayed = false;
     this.player.vy = 0;
     this.player.isSliding = false;
     this.player.slideTimer = 0;
@@ -427,8 +637,18 @@ export class Game {
     this.player.resetVisuals();
   }
 
+  updateMusicTier() {
+    const tier = musicTierForDistance(this.distance);
+    if (tier === this.musicTier) return;
+    this.musicTier = tier;
+    this.music.setTier(tier);
+  }
+
   resetWorld() {
     this.distance = 0;
+    this.musicTier = 0;
+    this.music.setTier(0);
+    this._fallScreamPlayed = false;
     this.sessionCoins = 0;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
@@ -441,6 +661,8 @@ export class Game {
     this.pickups.reset();
     this.coins.reset();
     this.environment.reset();
+    this.dayCycle.reset();
+    this.applyDayCycleVisuals();
     this.player.setGhostVisual(false);
     this.updateBoosterHUD();
     const profile = getCameraProfile(this.camera.aspect);
@@ -455,6 +677,7 @@ export class Game {
       return;
     }
     this.savePlayerName(this.getPlayerName());
+    this.closeShop();
 
     this.music.start();
     this.state = 'playing';
@@ -497,7 +720,9 @@ export class Game {
     this.ui.gameOverScreen.classList.add('hidden');
     this.ui.hud.classList.remove('visible');
     this.ui.startScreen.classList.remove('hidden');
+    this.closeShop();
     this.updateBestScoreUI();
+    this.updateShopUI();
     this.refreshLeaderboard();
     this.clock.getDelta();
   }
@@ -521,6 +746,7 @@ export class Game {
     this.state = 'gameover';
     this._needsRender = true;
     this.music.stop();
+    this.hideBoosterFx();
     this.saveBestScore(this.distance);
     this.ui.pauseScreen.classList.add('hidden');
     this.ui.hud.classList.remove('visible');
@@ -534,7 +760,7 @@ export class Game {
     this.ui.finalScore.textContent = `${Math.floor(this.distance)} metre koştun`;
     if (this.ui.finalCoins) {
       this.ui.finalCoins.textContent =
-        this.sessionCoins > 0 ? `${this.sessionCoins} coin topladın` : '';
+        this.sessionCoins > 0 ? `${this.sessionCoins} altın topladın` : '';
     }
 
     const best = this.getBestScore();
@@ -556,6 +782,7 @@ export class Game {
       this.boosters.update(dt);
       const runSpeed = this.speed * this.boosters.getSpeedMultiplier();
       this.distance += runSpeed * dt;
+      this.updateMusicTier();
 
       this.track.update(dt, runSpeed);
       this.gaps.update(dt, runSpeed, this.distance);
@@ -566,6 +793,12 @@ export class Game {
       const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
       this.player.update(dt, !this.gaps.isGapAt(0), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
+
+      if (this.player.isFalling && !this._fallScreamPlayed) {
+        this._fallScreamPlayed = true;
+        this.sfx.playFallScream();
+      }
+
       // Chase/danger ignores run speed — only hits (lunge) and stumbling pull the creature in.
       this.creature.update(dt, this.player.x, this.player.isStumbling);
 
@@ -580,13 +813,23 @@ export class Game {
         this.obstacles.removeObstacle(hit);
       }
 
-      const pickup = this.pickups.checkCollection(this.player.x, this.player.laneIndex);
+      const pickup = this.pickups.checkCollection(
+        this.player.x,
+        this.player.laneIndex,
+        this.player.y,
+        this.player.isSliding
+      );
       if (pickup) {
         this.collectBooster(pickup.type);
         this.pickups.removePickup(pickup);
       }
 
-      const coin = this.coins.checkCollection(this.player.x, this.player.laneIndex);
+      const coin = this.coins.checkCollection(
+        this.player.x,
+        this.player.laneIndex,
+        this.player.y,
+        this.player.isSliding
+      );
       if (coin) {
         this.collectCoin();
         this.coins.removeCoin(coin);
@@ -598,6 +841,8 @@ export class Game {
       }
 
       this.music.setDanger(this.creature.dangerLevel);
+      this.dayCycle.setDistance(this.distance);
+      this.applyDayCycleVisuals();
       this.environment.update(dt, runSpeed, this.camera);
       this.updateCamera(dt);
       this.updateUI();
@@ -647,7 +892,7 @@ export class Game {
       this.camera.position.x *= 0.9;
     }
 
-    this.lights.rim.material.opacity = 0.04 + danger * 0.1;
+    this.lights.rim.material.opacity = this._cycleRimOpacity + danger * 0.08;
     this.lights.rim.position.set(
       this.player.x * 0.2,
       4.5 + danger * 0.5,

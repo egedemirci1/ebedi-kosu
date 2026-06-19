@@ -267,6 +267,10 @@ export class Player {
     }
   }
 
+  get isSlideActive() {
+    return this.isSliding || this.slideBlend > 0.45;
+  }
+
   get lane() {
     return this.laneIndex;
   }

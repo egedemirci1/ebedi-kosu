@@ -13,27 +13,32 @@ vi.mock('../../src/scene.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../../src/ChaseMusic.js', () => ({
-  ChaseMusic: class MockChaseMusic {
-    constructor() {
-      this._enabled = true;
-    }
+vi.mock('../../src/ChaseMusic.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ChaseMusic: class MockChaseMusic {
+      constructor() {
+        this._enabled = true;
+      }
 
-    setEnabled(on) {
-      this._enabled = on;
-    }
+      setEnabled(on) {
+        this._enabled = on;
+      }
 
-    isEnabled() {
-      return this._enabled;
-    }
+      isEnabled() {
+        return this._enabled;
+      }
 
-    start() {}
-    pause() {}
-    resume() {}
-    stop() {}
-    setDanger() {}
-  },
-}));
+      start() {}
+      pause() {}
+      resume() {}
+      stop() {}
+      setDanger() {}
+      setTier() {}
+    },
+  };
+});
 
 vi.mock('../../src/Sfx.js', () => ({
   Sfx: class MockSfx {
@@ -42,12 +47,23 @@ vi.mock('../../src/Sfx.js', () => ({
       this.playWallHit = vi.fn();
       this.playObstacleHit = vi.fn();
       this.playBoosterPickup = vi.fn();
+      this.playCoinPickup = vi.fn();
+      this.playFallScream = vi.fn();
     }
 
     setEnabled() {}
     isEnabled() {
       return true;
     }
+  },
+}));
+
+vi.mock('../../src/Leaderboard.js', () => ({
+  fetchTopScores: vi.fn(async () => ({ scores: [], error: false })),
+  submitScore: vi.fn(async () => true),
+  isValidPlayerName: (name) => {
+    const trimmed = String(name ?? '').trim();
+    return trimmed.length >= 2 && trimmed.length <= 20;
   },
 }));
 

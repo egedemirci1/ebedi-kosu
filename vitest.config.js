@@ -7,8 +7,15 @@ export default defineConfig({
     include: ['tests/**/*.test.js'],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.js'],
-      exclude: ['src/main.js', 'src/ChaseMusic.js', 'src/Sfx.js', 'src/Environment.js'],
+      include: ['src/**/*.js', 'server/**/*.js'],
+      exclude: [
+        'src/main.js',
+        'src/ChaseMusic.js',
+        'src/Sfx.js',
+        'src/Environment.js',
+        'server/debug.js',
+        'server/index.js',
+      ],
     },
   },
 });

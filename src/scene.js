@@ -100,5 +100,5 @@ export function setupLights(scene) {
   rim.position.set(0, 4.5, 18);
   scene.add(rim);
 
-  return { moon, rim };
+  return { ambient, moon, rim };
 }

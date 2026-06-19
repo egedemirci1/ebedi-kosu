@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { LANES, LANE_WIDTH } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
+import { pickupWithinPlayerReach } from './CoinManager.js';
 
 export const BOOSTER_TYPES = ['ghost', 'jump', 'speed'];
 
 const MAX_PER_TYPE = 16;
 const PAD_LENGTH = 3.6;
 const PAD_HALF = PAD_LENGTH / 2;
+const FLOATING_Y_CENTER = 0.95;
+const FLOATING_Y_AMP = 0.14;
+const SPEED_PAD_Y = 0.03;
 const FLOATING_COLLECT_Z = 0.55;
-const FLOATING_SIGN_WIDTH = 0.88;
-const FLOATING_SIGN_HEIGHT = 1.2;
+const FLOATING_SIGN_WIDTH = 1.14;
+const FLOATING_SIGN_HEIGHT = 1.58;
 const PAD_TYPES = ['speed'];
 const FLOATING_TYPES = ['ghost', 'jump'];
 const LANE_MATCH = 0.85;
@@ -98,16 +102,16 @@ function createJumpArrowTexture() {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, 256, 256);
 
-  drawUpChevron(ctx, 128, 188, 58, 'rgba(80, 200, 50, 0.35)');
-  drawUpChevron(ctx, 128, 148, 50, 'rgba(110, 240, 70, 0.55)');
-  drawUpChevron(ctx, 128, 108, 44, 'rgba(170, 255, 120, 0.92)');
+  drawUpChevron(ctx, 128, 192, 68, 'rgba(80, 200, 50, 0.35)');
+  drawUpChevron(ctx, 128, 148, 58, 'rgba(110, 240, 70, 0.55)');
+  drawUpChevron(ctx, 128, 104, 52, 'rgba(170, 255, 120, 0.92)');
 
   ctx.fillStyle = 'rgba(150, 255, 110, 0.75)';
-  ctx.fillRect(116, 182, 24, 42);
+  ctx.fillRect(112, 188, 32, 48);
 
   ctx.strokeStyle = 'rgba(210, 255, 170, 0.55)';
   ctx.lineWidth = 3;
-  ctx.strokeRect(72, 56, 112, 168);
+  ctx.strokeRect(64, 48, 128, 176);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -168,11 +172,11 @@ function createGhostSignTexture() {
     ctx.stroke();
   }
 
-  drawGhostSilhouette(ctx, 128, 118, 2.4);
+  drawGhostSilhouette(ctx, 128, 116, 2.85);
 
   ctx.strokeStyle = 'rgba(160, 240, 255, 0.55)';
   ctx.lineWidth = 3;
-  ctx.strokeRect(72, 56, 112, 168);
+  ctx.strokeRect(64, 48, 128, 176);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -358,13 +362,15 @@ export class BoosterManager {
     const pulse = 0.88 + Math.sin(this.time * 6 + entry.phase) * 0.12;
 
     if (entry.type === 'speed') {
-      TEMP_POS.set(LANES[entry.lane], 0.03, entry.z);
+      entry.y = SPEED_PAD_Y;
+      TEMP_POS.set(LANES[entry.lane], SPEED_PAD_Y, entry.z);
       TEMP_QUAT.identity();
       TEMP_SCALE.set(1, 1, 1);
       TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
       this.materials.speed.opacity = pulse;
     } else {
-      const floatY = 0.95 + Math.sin(this.time * 4 + entry.phase) * 0.14;
+      const floatY = FLOATING_Y_CENTER + Math.sin(this.time * 4 + entry.phase) * FLOATING_Y_AMP;
+      entry.y = floatY;
       const scale = 1 + Math.sin(this.time * 5 + entry.phase) * 0.06;
       TEMP_POS.set(LANES[entry.lane], floatY, entry.z);
       TEMP_QUAT.identity();
@@ -468,7 +474,7 @@ export class BoosterManager {
     this._activeCount--;
   }
 
-  checkCollection(playerX, playerLane) {
+  checkCollection(playerX, playerLane, playerY = 0, isSliding = false) {
     for (let i = 0; i < this._activeCount; i++) {
       const p = this.pickups[i];
       if (!p.active) continue;
@@ -477,6 +483,10 @@ export class BoosterManager {
       if (Math.abs(p.z) > collectZ) continue;
       if (p.lane !== playerLane) continue;
       if (Math.abs(playerX - LANES[p.lane]) > LANE_MATCH) continue;
+
+      const pickupY = p.y ?? (p.type === 'speed' ? SPEED_PAD_Y : FLOATING_Y_CENTER);
+      if (!pickupWithinPlayerReach(playerY, pickupY, isSliding)) continue;
+
       return p;
     }
     return null;

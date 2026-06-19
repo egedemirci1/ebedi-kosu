@@ -6,7 +6,21 @@ const MAX_COINS = 64;
 const COIN_RADIUS = 0.38;
 const COIN_THICKNESS = 0.1;
 const COIN_COLLECT_Z = 0.55;
+const COIN_BOB_CENTER = 0.85;
+const COIN_BOB_AMP = 0.12;
 const LANE_MATCH = 0.85;
+
+export function pickupWithinPlayerReach(playerY, pickupY, isSliding = false) {
+  const feetY = playerY;
+  const bottomY = feetY - 0.15;
+
+  if (isSliding && playerY <= 0.25) {
+    return pickupY >= bottomY && pickupY <= feetY + 1.15;
+  }
+
+  const topY = playerY + 1.55;
+  return pickupY >= bottomY && pickupY <= topY + 0.1;
+}
 const SPAWN_LOOKAHEAD = -90;
 const MIN_SPAWN_Z = -115;
 const MIN_SPAWN_GAP = 4;
@@ -22,47 +36,101 @@ const TEMP_POS = new THREE.Vector3();
 const TEMP_QUAT = new THREE.Quaternion();
 const TEMP_SCALE = new THREE.Vector3(1, 1, 1);
 const TEMP_MATRIX = new THREE.Matrix4();
-const COIN_UP = new THREE.Vector3(0, 1, 0);
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const SPIN_QUAT = new THREE.Quaternion();
 
 function createCoinTexture() {
   const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
+  canvas.width = 256;
+  canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  const cx = 64;
-  const cy = 64;
+  const cx = 128;
+  const cy = 128;
 
-  const rim = ctx.createRadialGradient(cx, cy, 44, cx, cy, 58);
-  rim.addColorStop(0, '#ffd54a');
-  rim.addColorStop(0.7, '#e6a820');
-  rim.addColorStop(1, '#9a6b10');
-  ctx.fillStyle = rim;
+  ctx.fillStyle = '#1a1004';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const base = ctx.createRadialGradient(cx - 10, cy - 12, 18, cx, cy, 118);
+  base.addColorStop(0, '#fff0a0');
+  base.addColorStop(0.35, '#ffd033');
+  base.addColorStop(0.78, '#c4880a');
+  base.addColorStop(1, '#6b4806');
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 116, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#3d2804';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 108, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f5e090';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 114, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const inset = ctx.createRadialGradient(cx - 8, cy - 10, 6, cx, cy, 78);
+  inset.addColorStop(0, '#1f1404');
+  inset.addColorStop(0.45, '#120a02');
+  inset.addColorStop(1, '#060402');
+  ctx.fillStyle = inset;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 78, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#c99212';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 74, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#8a5a08';
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.arc(cx, cy, 58, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0a0602';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 46, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#fff4a8';
-  ctx.beginPath();
-  ctx.arc(cx, cy, 38, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.strokeStyle = '#d4a017';
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * Math.PI * 2) / 12;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * 48, cy + Math.sin(angle) * 48);
+    ctx.lineTo(cx + Math.cos(angle) * 56, cy + Math.sin(angle) * 56);
+    ctx.stroke();
+  }
 
-  ctx.fillStyle = '#c8860a';
+  ctx.fillStyle = '#e8b020';
   ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-    const x = cx + Math.cos(angle) * 22;
-    const y = cy + Math.sin(angle) * 22;
+  for (let i = 0; i < 8; i++) {
+    const r = i % 2 === 0 ? 20 : 9;
+    const angle = (i * Math.PI) / 4 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(255, 240, 180, 0.55)';
-  ctx.lineWidth = 3;
+  ctx.fillStyle = '#120a02';
   ctx.beginPath();
-  ctx.arc(cx, cy, 52, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.beginPath();
+  ctx.arc(cx - 28, cy - 34, 30, 0, Math.PI * 2);
+  ctx.fill();
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -73,7 +141,7 @@ const COIN_GEOMETRY = new THREE.CylinderGeometry(
   COIN_RADIUS,
   COIN_RADIUS,
   COIN_THICKNESS,
-  20,
+  16,
   1,
   false
 );
@@ -96,15 +164,17 @@ export class CoinManager {
     this.coinTexture = createCoinTexture();
     this.material = new THREE.MeshStandardMaterial({
       map: this.coinTexture,
-      color: 0xffd966,
+      color: 0xffffff,
       emissive: 0xffaa22,
-      emissiveIntensity: 0.45,
+      emissiveIntensity: 0.12,
       metalness: 0.65,
-      roughness: 0.35,
+      roughness: 0.32,
       fog: true,
     });
 
     this.mesh = new THREE.InstancedMesh(COIN_GEOMETRY, this.material, MAX_COINS);
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
 
@@ -183,11 +253,13 @@ export class CoinManager {
   }
 
   setInstanceMatrix(entry) {
-    const bob = 0.85 + Math.sin(this.time * 5 + entry.phase) * 0.12;
+    const bob = COIN_BOB_CENTER + Math.sin(this.time * 5 + entry.phase) * COIN_BOB_AMP;
+    entry.y = bob;
     const spin = this.time * 4 + entry.phase;
 
     TEMP_POS.set(LANES[entry.lane], bob, entry.z);
-    TEMP_QUAT.setFromAxisAngle(COIN_UP, spin);
+    SPIN_QUAT.setFromAxisAngle(WORLD_UP, spin);
+    TEMP_QUAT.copy(SPIN_QUAT);
     TEMP_SCALE.set(1, 1, 1);
     TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
     this.mesh.setMatrixAt(entry.slot, TEMP_MATRIX);
@@ -205,6 +277,7 @@ export class CoinManager {
       entry.slot = slot;
       entry.active = true;
       entry.phase = Math.random() * Math.PI * 2;
+      entry.y = COIN_BOB_CENTER;
     } else {
       entry = {
         lane,
@@ -212,6 +285,7 @@ export class CoinManager {
         slot,
         active: true,
         phase: Math.random() * Math.PI * 2,
+        y: COIN_BOB_CENTER,
       };
     }
 
@@ -285,13 +359,15 @@ export class CoinManager {
     this._activeCount--;
   }
 
-  checkCollection(playerX, playerLane) {
+  checkCollection(playerX, playerLane, playerY = 0, isSliding = false) {
     for (let i = 0; i < this._activeCount; i++) {
       const c = this.coins[i];
       if (!c.active) continue;
       if (Math.abs(c.z) > COIN_COLLECT_Z) continue;
       if (c.lane !== playerLane) continue;
       if (Math.abs(playerX - LANES[c.lane]) > LANE_MATCH) continue;
+      const coinY = c.y ?? COIN_BOB_CENTER;
+      if (!pickupWithinPlayerReach(playerY, coinY, isSliding)) continue;
       return c;
     }
     return null;

@@ -1,32 +1,31 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-function createSkyTexture() {
+function createSkyTexture(stops, horizonGlow) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
 
   const grad = ctx.createLinearGradient(0, 0, 0, 512);
-  grad.addColorStop(0, '#060612');
-  grad.addColorStop(0.25, '#0e0822');
-  grad.addColorStop(0.5, '#1a0e32');
-  grad.addColorStop(0.72, '#351840');
-  grad.addColorStop(0.88, '#5a2048');
-  grad.addColorStop(1, '#7a2848');
+  const positions = [0, 0.25, 0.5, 0.72, 0.88, 1];
+  for (let i = 0; i < stops.length; i++) {
+    grad.addColorStop(positions[i] ?? i / (stops.length - 1), stops[i]);
+  }
 
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 512);
 
+  const [r, g, b, a] = horizonGlow;
   const horizon = ctx.createLinearGradient(0, 380, 0, 512);
-  horizon.addColorStop(0, 'rgba(255, 80, 60, 0)');
-  horizon.addColorStop(1, 'rgba(255, 60, 40, 0.15)');
+  horizon.addColorStop(0, `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, 0)`);
+  horizon.addColorStop(1, `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a})`);
   ctx.fillStyle = horizon;
   ctx.fillRect(0, 380, 512, 132);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return { texture, canvas };
 }
 
 function createStarField(count = 900) {
@@ -325,17 +324,28 @@ export class Environment {
     this.poolSize = 10;
     this.valleyPoolSize = 12;
     this.time = 0;
+    this._skyStopsKey = '';
+    this._auroraMeshes = [];
+    this._cycleStarOpacity = 0.88;
+    this._cycleMoonVis = 1;
+    this._cycleMoonGlow = 0.08;
+    this._cycleMoonHalo = 0.03;
 
-    const skyTex = createSkyTexture();
+    const initialSky = createSkyTexture(
+      ['#141022', '#221838', '#342850', '#5a4870', '#8878a0', '#a898b0'],
+      [255, 170, 150, 0.07]
+    );
+    this.skyTexture = initialSky.texture;
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(85, 32, 24),
       new THREE.MeshBasicMaterial({
-        map: skyTex,
+        map: this.skyTexture,
         side: THREE.BackSide,
         depthWrite: false,
         fog: false,
       })
     );
+    this.skyMesh = sky;
     this.skyGroup.add(sky);
 
     const starField = createStarField();
@@ -350,7 +360,7 @@ export class Environment {
 
     this.moon = new THREE.Mesh(
       new THREE.SphereGeometry(2.2, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xdde8ff, fog: false })
+      new THREE.MeshBasicMaterial({ color: 0xdde8ff, fog: false, transparent: true, opacity: 1 })
     );
     this.moon.position.set(18, 28, -35);
     this.skyGroup.add(this.moon);
@@ -396,6 +406,7 @@ export class Environment {
       aurora.position.set(-5 + i * 8, 18 + i * 3, -40 - i * 10);
       aurora.rotation.x = -0.4 + i * 0.1;
       aurora.rotation.z = 0.2 - i * 0.15;
+      this._auroraMeshes.push(aurora);
       this.skyGroup.add(aurora);
     }
 
@@ -418,13 +429,55 @@ export class Environment {
     scene.background = null;
   }
 
+  updateSkyTexture(stops, horizonGlow) {
+    const key = stops.join('|') + horizonGlow.join(',');
+    if (key === this._skyStopsKey) return;
+    this._skyStopsKey = key;
+
+    const next = createSkyTexture(stops, horizonGlow);
+    const old = this.skyTexture;
+    this.skyTexture = next.texture;
+    this.skyMesh.material.map = this.skyTexture;
+    this.skyMesh.material.needsUpdate = true;
+    old?.dispose();
+  }
+
+  applyDayCycle(state) {
+    this.updateSkyTexture(state.sky, state.horizonGlow);
+
+    const starBase = 0.78 * state.stars;
+    this._cycleStarOpacity = starBase;
+    this.stars.material.opacity = starBase;
+    this.stars.visible = state.stars > 0.04;
+
+    for (const star of this.brightStars) {
+      star.mesh.visible = state.stars > 0.15;
+    }
+
+    const moonAlpha = state.moonVis;
+    this._cycleMoonVis = moonAlpha;
+    this._cycleMoonGlow = state.moonGlow * moonAlpha;
+    this._cycleMoonHalo = state.moonGlow * 0.45 * moonAlpha;
+    this.moon.material.opacity = moonAlpha;
+    this.moon.material.transparent = true;
+    this.moon.visible = moonAlpha > 0.05;
+    this.moonGlow.material.opacity = this._cycleMoonGlow;
+    this.moonHalo.material.opacity = this._cycleMoonHalo;
+
+    for (let i = 0; i < this._auroraMeshes.length; i++) {
+      const mesh = this._auroraMeshes[i];
+      mesh.material.opacity = state.aurora * (0.85 + i * 0.15);
+      mesh.visible = state.aurora > 0.01;
+    }
+  }
+
   update(dt, speed, camera) {
     this.time += dt;
     this.skyGroup.position.set(camera.position.x * 0.15, camera.position.y * 0.3, camera.position.z);
 
     const starPulse = 0.88 + Math.sin(this.time * 2.4) * 0.12;
     this.stars.material.size = this.starBaseSize * starPulse;
-    this.stars.material.opacity = 0.78 + Math.sin(this.time * 1.8) * 0.1;
+    this.stars.material.opacity = this._cycleStarOpacity * (0.94 + Math.sin(this.time * 1.8) * 0.06);
 
     for (const star of this.brightStars) {
       const twinkle = 0.45 + Math.sin(this.time * star.speed + star.phase) * 0.35;
@@ -435,9 +488,9 @@ export class Environment {
 
     const moonPulse = 0.92 + Math.sin(this.time * 0.9) * 0.08;
     this.moonGlow.scale.setScalar(moonPulse);
-    this.moonGlow.material.opacity = 0.08 + Math.sin(this.time * 1.1) * 0.04;
+    this.moonGlow.material.opacity = this._cycleMoonGlow * (0.92 + Math.sin(this.time * 1.1) * 0.08);
     this.moonHalo.scale.setScalar(0.95 + Math.sin(this.time * 0.7) * 0.08);
-    this.moonHalo.material.opacity = 0.03 + Math.sin(this.time * 0.85 + 1) * 0.015;
+    this.moonHalo.material.opacity = this._cycleMoonHalo * (0.95 + Math.sin(this.time * 0.85 + 1) * 0.05);
 
     const parallax = speed * dt * 0.35;
     const valleyParallax = speed * dt * 0.55;

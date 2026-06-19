@@ -31,9 +31,22 @@ describe('CoinManager', () => {
   describe('checkCollection', () => {
     it('collects a coin on the player lane at z=0', () => {
       manager.acquireCoin(1, 0);
-      const coin = manager.checkCollection(LANES[1], 1);
+      manager.coins[manager._activeCount - 1].y = 0.85;
+      const coin = manager.checkCollection(LANES[1], 1, 0);
       expect(coin).not.toBeNull();
       expect(coin.lane).toBe(1);
+    });
+
+    it('does not collect coins when player is jumping far above them', () => {
+      manager.acquireCoin(1, 0);
+      manager.coins[manager._activeCount - 1].y = 0.85;
+      expect(manager.checkCollection(LANES[1], 1, 1.6)).toBeNull();
+    });
+
+    it('collects coins during a low jump within reach', () => {
+      manager.acquireCoin(1, 0);
+      manager.coins[manager._activeCount - 1].y = 0.85;
+      expect(manager.checkCollection(LANES[1], 1, 0.35)).not.toBeNull();
     });
 
     it('does not collect coins on another lane', () => {
