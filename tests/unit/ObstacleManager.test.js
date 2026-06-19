@@ -24,7 +24,7 @@ function makePlayer({
     },
     get hitbox() {
       if (isSliding || slideBlend > 0.35) {
-        return { x, y: y + 0.35, z: 0, radius: 0.42, height: 0.62 };
+        return { x, y: y + 0.46, z: 0, radius: 0.42, height: 0.68 };
       }
       return { x, y: y + 0.9, z: 0, radius: 0.45, height: 1.6 };
     },
@@ -116,6 +116,24 @@ describe('ObstacleManager', () => {
     it('hits low spikes while sliding on the ground', () => {
       insertObstacle(obstacles, 'low', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ isSliding: true, slideBlend: 1 }))).not.toBeNull();
+    });
+
+    it('hits low spikes while slide blend is active without isSliding', () => {
+      insertObstacle(obstacles, 'low', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ isSliding: false, slideBlend: 0.5 }))).not.toBeNull();
+    });
+
+    it('detects low spikes when slide z offset would miss a narrow z window', () => {
+      insertObstacle(obstacles, 'low', 1, 0.62);
+      const player = makePlayer({ isSliding: true, slideBlend: 1 });
+      expect(obstacles.checkCollision(player)).not.toBeNull();
+    });
+
+    it('hits low spikes during slow slide-out when slideBlend is between 0.35 and 0.45', () => {
+      insertObstacle(obstacles, 'low', 1, 0.55);
+      const player = makePlayer({ isSliding: false, slideBlend: 0.4 });
+      expect(obstacles.checkCollision(player)).not.toBeNull();
+      expect(obstacles.checkCollision(player, 0.02)).not.toBeNull();
     });
 
     it('detects collision when high speed skips the point z window in one frame', () => {

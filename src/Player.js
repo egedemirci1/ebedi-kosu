@@ -16,6 +16,8 @@ const STAND_BODY_Y = 1.05;
 const STAND_HEAD_Y = 1.75;
 const SLIDE_BODY_Y = 0.42;
 const SLIDE_HEAD_Y = 0.58;
+const SLIDE_HITBOX_Y = 0.46;
+const SLIDE_HITBOX_HEIGHT = 0.68;
 const SLIDE_BODY_ROT_X = 1.35;
 const TRAIL_COUNT = 3;
 const TRAIL_SPACING = 0.35;
@@ -421,10 +423,10 @@ export class Player {
     if (this.isSliding || this.slideBlend > 0.35) {
       return {
         x: this.x,
-        y: this.y + 0.35,
+        y: this.y + SLIDE_HITBOX_Y,
         z: 0,
         radius: 0.42,
-        height: 0.62,
+        height: SLIDE_HITBOX_HEIGHT,
       };
     }
 

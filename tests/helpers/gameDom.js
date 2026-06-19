@@ -21,6 +21,7 @@ const GAME_DOM_IDS = [
   'booster-speed',
   'player-name',
   'player-name-error',
+  'game-over-score-msg',
   'leaderboard-list',
   'leaderboard-empty',
   'leaderboard-error',

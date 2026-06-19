@@ -29,10 +29,29 @@ const MAX_PER_TYPE = 24;
 const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
 const LANE_MATCH = 0.85;
+const LOW_SPIKE_HEIGHTS = [0.82, 0.72, 0.76, 0.62, 0.7];
+const TALL_SPIKE_HEIGHTS = [2.95, 3.18, 2.78, 3.05];
 
 /** True when obstacle z-range this frame crossed the player plane (z=0). */
 export function obstacleSweepHitsPlayer(prevZ, z, window = COLLISION_Z) {
-  return prevZ <= window && z >= -window;
+  const lo = Math.min(prevZ, z);
+  const hi = Math.max(prevZ, z);
+  return lo <= window && hi >= -window;
+}
+
+function playerSlideZOffset(player) {
+  const blend = player.slideBlend ?? 0;
+  if (player.isSliding || blend > 0.35) return -blend * 0.22;
+  return 0;
+}
+
+/** Matches slide hitbox — includes slide-out animation after key release. */
+function playerInSlidePose(player) {
+  return player.isSliding || (player.slideBlend ?? 0) > 0.35;
+}
+
+function collisionZWindow(player, slidePose) {
+  return COLLISION_Z + (slidePose ? Math.abs(playerSlideZOffset(player)) + 0.2 : 0);
 }
 
 function playerHitbox(player) {
@@ -40,7 +59,7 @@ function playerHitbox(player) {
 
   const sliding = player.isSliding || (player.slideBlend ?? 0) > 0.35;
   if (sliding) {
-    return { y: player.y + 0.35, height: 0.62 };
+    return { y: player.y + 0.46, height: 0.68 };
   }
   return { y: player.y + 0.9, height: 1.6 };
 }
@@ -355,11 +374,24 @@ function buildGateGeometry(def) {
   return merged;
 }
 
-function obstacleTopY(type, def) {
+function obstacleVerticalBounds(type, def) {
   if (SLIDE_UNDER_TYPES.has(type)) {
-    return (def.clearance ?? 1.16) + def.height + 0.16;
+    const bottomY = def.clearance ?? 1.16;
+    return { bottomY, topY: bottomY + def.height + 0.16 };
   }
-  return def.meshY + def.height / 2;
+
+  if (SPIKE_TYPES.has(type)) {
+    const anchor = def.meshY ?? 0;
+    const baseY = -def.height / 2;
+    const floorY = anchor + baseY + 0.2;
+    const spikeHeights = type === 'low' ? LOW_SPIKE_HEIGHTS : TALL_SPIKE_HEIGHTS;
+    const tipY = anchor + baseY + 0.2 + Math.max(...spikeHeights);
+    return { bottomY: floorY, topY: tipY };
+  }
+
+  const center = def.meshY ?? def.height / 2;
+  const half = def.height / 2;
+  return { bottomY: center - half, topY: center + half };
 }
 
 function obstacleBeamBottom(type, def) {
@@ -546,7 +578,9 @@ export class ObstacleManager {
       entry.lane = lane;
       entry.z = z;
       entry.slot = slot;
-      entry.topY = obstacleTopY(type, def);
+      const bounds = obstacleVerticalBounds(type, def);
+      entry.bottomY = bounds.bottomY;
+      entry.topY = bounds.topY;
       entry.beamBottom = obstacleBeamBottom(type, def);
       entry.jumpable = def.jumpable;
       entry.slideUnder = def.slideUnder ?? false;
@@ -557,7 +591,7 @@ export class ObstacleManager {
         lane,
         z,
         slot,
-        topY: obstacleTopY(type, def),
+        ...obstacleVerticalBounds(type, def),
         beamBottom: obstacleBeamBottom(type, def),
         jumpable: def.jumpable,
         slideUnder: def.slideUnder ?? false,
@@ -679,22 +713,26 @@ export class ObstacleManager {
 
   checkCollision(player, frameMove = 0) {
     const { bottom: playerBottom, top: playerTop } = playerVerticalBounds(player);
+    const slidePose = playerInSlidePose(player);
     const slideActive = player.isSlideActive ?? player.isSliding;
+    const zWindow = collisionZWindow(player, slidePose);
+    const playerZ = slidePose ? playerSlideZOffset(player) : 0;
 
     for (let i = 0; i < this._activeCount; i++) {
       const obs = this.obstacles[i];
       if (!obs.active) continue;
 
-      const prevZ = frameMove > 0 ? obs.z - frameMove : obs.z;
+      const relZ = obs.z - playerZ;
+      const prevRelZ = frameMove > 0 ? relZ - frameMove : relZ;
       const inZWindow =
         frameMove > 0
-          ? obstacleSweepHitsPlayer(prevZ, obs.z)
-          : Math.abs(obs.z) <= COLLISION_Z;
+          ? obstacleSweepHitsPlayer(prevRelZ, relZ, zWindow)
+          : Math.abs(relZ) <= zWindow;
       if (!inZWindow) continue;
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
 
       if (obs.slideUnder) {
-        const beamBottom = obs.beamBottom ?? 1.16;
+        const beamBottom = obs.beamBottom ?? obs.bottomY ?? 1.16;
         const beamTop = obs.topY ?? beamBottom + 0.58;
         if (slideActive && playerTop <= beamBottom - CLEARANCE) continue;
         if (playerBottom >= beamTop - CLEARANCE) continue;
@@ -702,9 +740,18 @@ export class ObstacleManager {
         return obs;
       }
 
-      if (obs.jumpable && playerBottom >= obs.topY - CLEARANCE) continue;
+      const hazardBottom = obs.bottomY ?? 0;
+      const hazardTop = obs.topY ?? hazardBottom + 0.5;
 
-      return obs;
+      if (obs.jumpable && playerBottom >= hazardTop - CLEARANCE) continue;
+
+      if (SPIKE_TYPES.has(obs.type)) {
+        return obs;
+      }
+
+      const overlapsVertically =
+        playerTop > hazardBottom + CLEARANCE && playerBottom < hazardTop - CLEARANCE;
+      if (overlapsVertically) return obs;
     }
     return null;
   }

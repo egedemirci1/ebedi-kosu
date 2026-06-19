@@ -89,6 +89,7 @@ export class Game {
       finalCoinsRow: document.getElementById('final-coins-row'),
       bestScoreGameOver: document.getElementById('best-score-gameover'),
       bestScoreGameOverRow: document.getElementById('best-score-gameover-row'),
+      gameOverScoreMsg: document.getElementById('game-over-score-msg'),
       startBtn: document.getElementById('start-btn'),
       resumeBtn: document.getElementById('resume-btn'),
       menuBtn: document.getElementById('menu-btn'),
@@ -275,14 +276,10 @@ export class Game {
     list.innerHTML = '';
     this.ui.leaderboardEmpty?.classList.add('hidden');
     this.ui.leaderboardError?.classList.add('hidden');
-    list.classList.toggle('leaderboard-list--placeholder', error);
+    list.classList.remove('leaderboard-list--placeholder');
 
     if (error) {
-      const rows = buildLeaderboardDisplayRows(scores, true);
-      if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — placeholder rows', rows.length);
-      for (const row of rows) {
-        list.appendChild(this.createLeaderboardRow(row));
-      }
+      this.ui.leaderboardError?.classList.remove('hidden');
       return;
     }
 
@@ -772,9 +769,24 @@ export class Game {
     this.clock.getDelta();
   }
 
+  setGameOverScoreMsg(message, isError = false) {
+    const el = this.ui.gameOverScoreMsg;
+    if (!el) return;
+    if (!message) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      el.classList.remove('game-over-score-msg--error');
+      return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+    el.classList.toggle('game-over-score-msg--error', isError);
+  }
+
   async submitScoreToLeaderboard() {
     const name = this.getPlayerName();
     const distance = Math.floor(this.distance);
+    this.setGameOverScoreMsg('');
     if (import.meta.env.DEV) {
       console.log('[leaderboard] submitScoreToLeaderboard', { name, distance });
     }
@@ -784,6 +796,7 @@ export class Game {
     }
     if (!this.runToken) {
       if (import.meta.env.DEV) console.log('[leaderboard] skip submit — missing run token');
+      this.setGameOverScoreMsg('Skor tablosu şu an kapalı — skor kaydedilemedi.', true);
       return;
     }
     const ok = await submitScore(
@@ -794,7 +807,12 @@ export class Game {
     );
     this.runToken = null;
     if (import.meta.env.DEV) console.log('[leaderboard] submit result', { ok });
-    if (ok) this.refreshLeaderboard();
+    if (ok) {
+      this.setGameOverScoreMsg('Skor tablosuna kaydedildi.');
+      this.refreshLeaderboard();
+      return;
+    }
+    this.setGameOverScoreMsg('Skor tablosuna yazılamadı.', true);
   }
 
   gameOver(reason = 'caught') {

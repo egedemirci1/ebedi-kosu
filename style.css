@@ -1220,6 +1220,21 @@ canvas {
   width: 100%;
 }
 
+.game-over-score-msg {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  color: rgba(180, 220, 180, 0.92);
+  text-align: center;
+}
+
+.game-over-score-msg--error {
+  color: rgba(255, 170, 140, 0.95);
+}
+
+.game-over-score-msg.hidden {
+  display: none;
+}
+
 #final-score,
 #best-score-gameover {
   margin: 0;

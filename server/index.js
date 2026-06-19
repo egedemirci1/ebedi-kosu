@@ -35,7 +35,7 @@ const runStartLimiter = createRateLimiter({
 
 app.get('/api/health', async (_req, res) => {
   if (!isDbConfigured()) {
-    res.json({ ok: true, database: false, connected: false });
+    res.json({ ok: true, database: false, connected: false, run_sessions: false });
     return;
   }
 
@@ -45,10 +45,10 @@ app.get('/api/health', async (_req, res) => {
       ok: true,
       database: true,
       connected: true,
+      run_sessions: isRunSessionConfigured(),
     };
     if (LB_DEBUG) {
       payload.db_name = getDatabaseName();
-      payload.run_sessions = isRunSessionConfigured();
     }
     res.json(payload);
   } catch (err) {

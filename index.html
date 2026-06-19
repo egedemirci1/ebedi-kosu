@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Ebedi Koşu</title>
+    <meta name="description" content="Geçmişin seni kovalıyor. Koş ve geçmişinden kaç." />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta property="og:title" content="Ebedi Koşu" />
+    <meta property="og:description" content="Geçmişin seni kovalıyor. Koş ve geçmişinden kaç." />
+    <meta property="og:image" content="https://oyun.duovision.com.tr/logo.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://oyun.duovision.com.tr/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ebedi Koşu" />
+    <meta name="twitter:description" content="Geçmişin seni kovalıyor. Koş ve geçmişinden kaç." />
+    <meta name="twitter:image" content="https://oyun.duovision.com.tr/logo.png" />
+    <meta name="theme-color" content="#0a0a12" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -89,7 +102,7 @@
             <h2 class="leaderboard-title">En İyiler</h2>
             <ol id="leaderboard-list" class="leaderboard-list"></ol>
             <p id="leaderboard-empty" class="leaderboard-msg hidden">Henüz skor yok</p>
-            <p id="leaderboard-error" class="leaderboard-msg leaderboard-error hidden">Liste yüklenemedi</p>
+            <p id="leaderboard-error" class="leaderboard-msg leaderboard-error hidden">Skor tablosu şu an kullanılamıyor</p>
           </aside>
         </div>
         <button id="start-btn">KOŞ!</button>
@@ -186,6 +199,7 @@
               <span id="best-score-gameover" class="game-over-stat-value">0 m</span>
             </div>
           </div>
+          <p id="game-over-score-msg" class="game-over-score-msg hidden" aria-live="polite"></p>
           <div class="game-over-buttons">
             <button id="restart-btn">Tekrar Dene</button>
             <button id="gameover-menu-btn" class="btn-secondary">Ana Menü</button>
