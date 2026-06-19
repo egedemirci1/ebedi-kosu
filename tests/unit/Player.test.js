@@ -1,0 +1,146 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { Player } from '../../src/Player.js';
+import { createScene } from '../helpers/fixtures.js';
+
+describe('Player', () => {
+  let scene;
+  let player;
+
+  beforeEach(() => {
+    scene = createScene();
+    player = new Player(scene);
+  });
+
+  describe('jump', () => {
+    it('rejects jump while airborne', () => {
+      player.onGround = false;
+      player.isJumping = true;
+      expect(player.jump()).toBe(false);
+      expect(player.vy).toBe(0);
+    });
+
+    it('rejects super jump while airborne without consuming booster elsewhere', () => {
+      player.onGround = false;
+      expect(player.jump(true)).toBe(false);
+    });
+
+    it('uses higher initial velocity for super jump than normal jump', () => {
+      player.jump(false);
+      const normalVy = player.vy;
+      player.onGround = true;
+      player.isJumping = false;
+      player.vy = 0;
+
+      player.jump(true);
+      expect(player.vy).toBeGreaterThan(normalVy);
+    });
+  });
+
+  describe('lane walls', () => {
+    it('returns wall when moving left from leftmost lane', () => {
+      player.laneIndex = 0;
+      expect(player.moveLeft()).toBe('wall');
+      expect(player.laneIndex).toBe(0);
+    });
+
+    it('returns wall when moving right from rightmost lane', () => {
+      player.laneIndex = 2;
+      expect(player.moveRight()).toBe('wall');
+      expect(player.laneIndex).toBe(2);
+    });
+  });
+
+  describe('setGhostVisual', () => {
+    it('is idempotent when toggling same state repeatedly', () => {
+      player.setGhostVisual(true);
+      const opacity = player.bodyMat.opacity;
+      player.setGhostVisual(true);
+      expect(player.bodyMat.opacity).toBe(opacity);
+    });
+
+    it('restores opaque materials after ghost ends', () => {
+      player.setGhostVisual(true);
+      player.setGhostVisual(false);
+      expect(player.bodyMat.transparent).toBe(false);
+      expect(player.bodyMat.opacity).toBe(1);
+    });
+  });
+
+  describe('gap / void fall physics', () => {
+    it('enters falling state when floor disappears under grounded player', () => {
+      player.onGround = true;
+      player.isJumping = false;
+      player.update(0.016, false);
+      expect(player.isFalling).toBe(true);
+      expect(player.onGround).toBe(false);
+      expect(player.vy).toBeLessThan(0);
+    });
+
+    it('does not re-trigger void drop while already airborne from jump', () => {
+      player.onGround = false;
+      player.isJumping = true;
+      player.vy = 8;
+      player.update(0.016, false);
+      expect(player.vy).toBeLessThan(8);
+      expect(player.isFalling).toBe(false);
+    });
+
+    it('accelerates downward in void with stronger gravity than normal jump arc', () => {
+      player.onGround = true;
+      player.update(0.016, false);
+      const voidVy = player.vy;
+      player.onGround = true;
+      player.isFalling = false;
+      player.isJumping = false;
+      player.vy = 0;
+      player.jump(false);
+      expect(voidVy).toBeLessThan(player.vy);
+    });
+
+    it('continues falling deeper while hasFloor remains false', () => {
+      player.onGround = true;
+      player.update(0.05, false);
+      const startY = player.y;
+      for (let i = 0; i < 20; i++) player.update(0.05, false);
+      expect(player.y).toBeLessThan(startY);
+      expect(player.isFalling).toBe(true);
+    });
+
+    it('does not recover from void fall when floor returns (irreversible until game over)', () => {
+      player.onGround = true;
+      player.update(0.05, false);
+      for (let i = 0; i < 30; i++) player.update(0.05, false);
+      player.update(0.05, true);
+      expect(player.isFalling).toBe(true);
+      expect(player.y).toBeLessThan(0);
+      expect(player.onGround).toBe(false);
+    });
+  });
+
+  describe('stumble and wall bounce', () => {
+    it('clears stumble after timer expires', () => {
+      player.stumble(0.1, 0);
+      player.update(0.05);
+      expect(player.isStumbling).toBe(true);
+      player.update(0.08);
+      expect(player.isStumbling).toBe(false);
+    });
+
+    it('starts wall bounce only for wall-side stumbles', () => {
+      player.stumble(0.6, -1);
+      expect(player.wallBounceTimer).toBeGreaterThan(0);
+      expect(player.wallBounceSide).toBe(-1);
+
+      player.wallBounceTimer = 0;
+      player.stumble(0.6, 0);
+      expect(player.wallBounceTimer).toBe(0);
+    });
+
+    it('applies lateral push during wall bounce window', () => {
+      player.x = 0;
+      player.stumble(0.6, 1);
+      player.update(0.05);
+      expect(player.x).toBeGreaterThan(0);
+    });
+  });
+});

@@ -110,9 +110,53 @@ canvas {
 #danger-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #ff6644, #ff2244);
-  border-radius: 6px;
+  background: linear-gradient(90deg, #ff4444, #ff8844);
   transition: width 0.15s ease-out;
+  box-shadow: 0 0 8px rgba(255, 80, 60, 0.6);
+}
+
+.booster-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.booster-chip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 10, 20, 0.75);
+  border: 1px solid rgba(120, 100, 200, 0.3);
+  border-radius: 12px;
+  padding: 8px 12px;
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.booster-chip.active {
+  display: flex;
+}
+
+.booster-chip.ghost.active {
+  border-color: rgba(100, 220, 255, 0.55);
+  color: #aaf5ff;
+}
+
+.booster-chip.jump.active {
+  border-color: rgba(140, 255, 100, 0.55);
+  color: #ccff99;
+}
+
+.booster-chip.speed.active {
+  border-color: rgba(255, 170, 80, 0.55);
+  color: #ffcc88;
+}
+
+.booster-chip .booster-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .overlay {
@@ -208,8 +252,115 @@ canvas {
 .best-score {
   font-size: 0.95rem;
   color: #88ccff;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   min-height: 1.2em;
+}
+
+.leaderboard-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: min(240px, 42vw);
+  background: rgba(10, 10, 20, 0.82);
+  border: 1px solid rgba(120, 100, 200, 0.35);
+  border-radius: 12px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+  text-align: left;
+  pointer-events: none;
+}
+
+.leaderboard-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #8888aa;
+  margin-bottom: 10px;
+}
+
+.leaderboard-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.leaderboard-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #ccccee;
+}
+
+.leaderboard-list .rank {
+  color: #8888aa;
+  min-width: 1.4em;
+}
+
+.leaderboard-list .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-list .dist {
+  color: #a8f0ff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-msg {
+  font-size: 0.82rem;
+  color: #666688;
+}
+
+.leaderboard-error {
+  color: #aa6666;
+}
+
+.player-name-field {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-name-field label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #8888aa;
+}
+
+#player-name {
+  pointer-events: all;
+  width: min(280px, 80vw);
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 100, 200, 0.45);
+  background: rgba(20, 20, 40, 0.85);
+  color: #e8e8f0;
+  font-size: 1rem;
+  text-align: center;
+  outline: none;
+}
+
+#player-name:focus {
+  border-color: rgba(168, 240, 255, 0.6);
+  box-shadow: 0 0 16px rgba(120, 100, 255, 0.25);
+}
+
+#player-name.invalid {
+  border-color: rgba(255, 100, 120, 0.65);
+}
+
+.player-name-error {
+  font-size: 0.82rem;
+  color: #ff8888;
+  max-width: 280px;
 }
 
 .game-over-buttons {
@@ -377,6 +528,21 @@ button:active {
 }
 
 @media (max-width: 600px) {
+  .leaderboard-panel {
+    position: static;
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 16px;
+    order: -1;
+  }
+
+  #start-screen {
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding-top: 16px;
+    padding-bottom: 24px;
+  }
+
   .controls-info kbd {
     display: none;
   }

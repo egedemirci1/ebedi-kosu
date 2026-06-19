@@ -25,10 +25,28 @@ export class ChaseMusic {
     this.master.gain.setValueAtTime(this.master.gain.value, t);
     const target = on && this.playing ? 0.45 : 0;
     this.master.gain.linearRampToValueAtTime(target, t + 0.2);
+
+    if (!on) {
+      this.stopScheduler();
+    } else if (this.playing && !this.paused) {
+      this.schedule();
+    }
   }
 
   isEnabled() {
     return this.enabled;
+  }
+
+  getContext() {
+    this.init();
+    return this.ctx;
+  }
+
+  stopScheduler() {
+    if (this.schedulerId) {
+      clearInterval(this.schedulerId);
+      this.schedulerId = null;
+    }
   }
 
   init() {
@@ -79,8 +97,7 @@ export class ChaseMusic {
     this.master.gain.linearRampToValueAtTime(0, t + 1);
 
     if (this.schedulerId) {
-      clearInterval(this.schedulerId);
-      this.schedulerId = null;
+      this.stopScheduler();
     }
   }
 
@@ -96,8 +113,7 @@ export class ChaseMusic {
     this.master.gain.linearRampToValueAtTime(0, t + 0.15);
 
     if (this.schedulerId) {
-      clearInterval(this.schedulerId);
-      this.schedulerId = null;
+      this.stopScheduler();
     }
   }
 
@@ -124,9 +140,11 @@ export class ChaseMusic {
   }
 
   schedule() {
-    if (this.schedulerId) clearInterval(this.schedulerId);
+    this.stopScheduler();
+    if (!this.enabled || !this.playing) return;
+
     this.schedulerId = setInterval(() => {
-      if (!this.playing) return;
+      if (!this.playing || !this.enabled) return;
       while (this.nextBeat < this.ctx.currentTime + 0.2) {
         this.scheduleBeat(this.nextBeat, this.beatIndex);
         this.beatIndex = (this.beatIndex + 1) % LOOP_BEATS;

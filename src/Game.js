@@ -8,8 +8,12 @@ import { GapManager } from './GapManager.js';
 import { ChaseMusic } from './ChaseMusic.js';
 import { Sfx } from './Sfx.js';
 import { Environment } from './Environment.js';
+import { BoosterManager } from './BoosterManager.js';
+import { BoosterEffects } from './BoosterEffects.js';
+import { fetchTopScores, submitScore, isValidPlayerName } from './Leaderboard.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
+const PLAYER_NAME_KEY = 'ebedi-kosu-player-name';
 const MUSIC_PREF_KEY = 'ebedi-kosu-music';
 const SFX_PREF_KEY = 'ebedi-kosu-sfx';
 
@@ -26,9 +30,16 @@ export class Game {
     this.track = new Track(this.scene);
     this.obstacles = new ObstacleManager(this.scene);
     this.gaps = new GapManager(this.scene);
+    this.gaps.setTrack(this.track);
+    this.pickups = new BoosterManager(this.scene);
+    this.boosters = new BoosterEffects();
 
     this.obstacles.setGapManager(this.gaps);
     this.gaps.setObstacleManager(this.obstacles);
+    this.gaps.setPickupManager(this.pickups);
+    this.pickups.setGapManager(this.gaps);
+    this.pickups.setObstacleManager(this.obstacles);
+    this.pickups.setBoosterEffects(this.boosters);
 
     this.state = 'menu';
     this.distance = 0;
@@ -39,7 +50,7 @@ export class Game {
     this._lastCamFov = 65;
     this.clock = new THREE.Clock();
     this.music = new ChaseMusic();
-    this.sfx = new Sfx();
+    this.sfx = new Sfx(this.music);
 
     this.ui = {
       hud: document.getElementById('hud'),
@@ -57,6 +68,14 @@ export class Game {
       pauseHudBtn: document.getElementById('pause-hud-btn'),
       restartBtn: document.getElementById('restart-btn'),
       gameOverMenuBtn: document.getElementById('gameover-menu-btn'),
+      boosterGhost: document.getElementById('booster-ghost'),
+      boosterJump: document.getElementById('booster-jump'),
+      boosterSpeed: document.getElementById('booster-speed'),
+      playerNameInput: document.getElementById('player-name'),
+      playerNameError: document.getElementById('player-name-error'),
+      leaderboardList: document.getElementById('leaderboard-list'),
+      leaderboardEmpty: document.getElementById('leaderboard-empty'),
+      leaderboardError: document.getElementById('leaderboard-error'),
     };
 
     this.music.setEnabled(this.loadAudioPref(MUSIC_PREF_KEY, true));
@@ -65,7 +84,9 @@ export class Game {
 
     this.bindInput();
     this.bindUI();
+    this.loadPlayerName();
     this.updateBestScoreUI();
+    this.refreshLeaderboard();
     window.addEventListener('resize', () => this.onResize());
     window.visualViewport?.addEventListener('resize', () => this.onResize());
     document.addEventListener('visibilitychange', () => {
@@ -75,6 +96,63 @@ export class Game {
 
   getBestScore() {
     return parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10);
+  }
+
+  getPlayerName() {
+    return this.ui.playerNameInput?.value.trim() ?? '';
+  }
+
+  loadPlayerName() {
+    const saved = localStorage.getItem(PLAYER_NAME_KEY);
+    if (saved && this.ui.playerNameInput) {
+      this.ui.playerNameInput.value = saved;
+    }
+  }
+
+  savePlayerName(name) {
+    localStorage.setItem(PLAYER_NAME_KEY, name);
+  }
+
+  setPlayerNameError(visible) {
+    this.ui.playerNameInput?.classList.toggle('invalid', visible);
+    this.ui.playerNameError?.classList.toggle('hidden', !visible);
+  }
+
+  validatePlayerName() {
+    const name = this.getPlayerName();
+    const valid = isValidPlayerName(name);
+    this.setPlayerNameError(!valid);
+    return valid;
+  }
+
+  async refreshLeaderboard() {
+    const scores = await fetchTopScores();
+    const list = this.ui.leaderboardList;
+    if (!list) return;
+
+    list.innerHTML = '';
+    this.ui.leaderboardEmpty?.classList.add('hidden');
+    this.ui.leaderboardError?.classList.add('hidden');
+
+    if (scores.length === 0) {
+      this.ui.leaderboardEmpty?.classList.remove('hidden');
+      return;
+    }
+
+    for (const row of scores) {
+      const item = document.createElement('li');
+      const rank = document.createElement('span');
+      rank.className = 'rank';
+      rank.textContent = `${row.rank}.`;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = row.player_name;
+      const dist = document.createElement('span');
+      dist.className = 'dist';
+      dist.textContent = `${row.distance}m`;
+      item.append(rank, name, dist);
+      list.appendChild(item);
+    }
   }
 
   loadAudioPref(key, defaultValue) {
@@ -134,14 +212,24 @@ export class Game {
   }
 
   bindUI() {
-    this.ui.startBtn.addEventListener('click', () => this.start());
-    this.ui.restartBtn.addEventListener('click', () => this.start());
-    this.ui.resumeBtn.addEventListener('click', () => this.resume());
-    this.ui.menuBtn.addEventListener('click', () => this.goToMenu());
-    this.ui.pauseHudBtn.addEventListener('click', () => {
+    this.ui.startBtn?.addEventListener('click', () => this.start());
+    this.ui.restartBtn?.addEventListener('click', () => this.start());
+    this.ui.playerNameInput?.addEventListener('input', () => {
+      if (isValidPlayerName(this.getPlayerName())) this.setPlayerNameError(false);
+    });
+    this.ui.playerNameInput?.addEventListener('blur', () => {
+      const name = this.getPlayerName();
+      if (isValidPlayerName(name)) this.savePlayerName(name);
+    });
+    this.ui.playerNameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.start();
+    });
+    this.ui.resumeBtn?.addEventListener('click', () => this.resume());
+    this.ui.menuBtn?.addEventListener('click', () => this.goToMenu());
+    this.ui.pauseHudBtn?.addEventListener('click', () => {
       if (this.state === 'playing') this.pause();
     });
-    this.ui.gameOverMenuBtn.addEventListener('click', () => this.goToMenu());
+    this.ui.gameOverMenuBtn?.addEventListener('click', () => this.goToMenu());
     document.querySelectorAll('.audio-toggle-music').forEach((btn) => {
       btn.addEventListener('click', () => this.toggleMusic());
     });
@@ -159,7 +247,37 @@ export class Game {
   }
 
   tryJump() {
-    if (this.player.jump()) this.sfx.playJump();
+    const superJump = this.boosters.superJumpReady;
+    if (this.player.jump(superJump)) {
+      if (superJump) this.boosters.consumeSuperJump();
+      this.sfx.playJump();
+    }
+  }
+
+  collectBooster(type) {
+    this.boosters.activate(type);
+    this.sfx.playBoosterPickup();
+    this.updateBoosterHUD();
+  }
+
+  updateBoosterHUD() {
+    const state = this.boosters.getHudState();
+
+    if (this.ui.boosterGhost) {
+      this.ui.boosterGhost.classList.toggle('active', state.ghost > 0);
+      const time = this.ui.boosterGhost.querySelector('.booster-time');
+      if (time) time.textContent = state.ghost > 0 ? `${state.ghost.toFixed(1)}s` : '';
+    }
+
+    if (this.ui.boosterJump) {
+      this.ui.boosterJump.classList.toggle('active', state.jump);
+    }
+
+    if (this.ui.boosterSpeed) {
+      this.ui.boosterSpeed.classList.toggle('active', state.speed > 0);
+      const time = this.ui.boosterSpeed.querySelector('.booster-time');
+      if (time) time.textContent = state.speed > 0 ? `${state.speed.toFixed(1)}s` : '';
+    }
   }
 
   bindInput() {
@@ -228,6 +346,8 @@ export class Game {
   }
 
   applyHit(wallSide = 0) {
+    if (wallSide === 0 && this.boosters.isGhostActive()) return;
+
     if (wallSide !== 0) {
       this.sfx.playWallHit(wallSide);
     } else {
@@ -263,12 +383,24 @@ export class Game {
     this.track.reset();
     this.obstacles.reset();
     this.gaps.reset();
+    this.boosters.reset();
+    this.pickups.reset();
     this.environment.reset();
-    this.camera.fov = 65;
+    this.player.setGhostVisual(false);
+    this.updateBoosterHUD();
+    const profile = getCameraProfile(this.camera.aspect);
+    this.camera.fov = profile.baseFov;
+    this._lastCamFov = profile.baseFov;
     this.camera.updateProjectionMatrix();
   }
 
   start() {
+    if (!this.validatePlayerName()) {
+      this.ui.playerNameInput?.focus();
+      return;
+    }
+    this.savePlayerName(this.getPlayerName());
+
     this.music.start();
     this.state = 'playing';
     this._needsRender = true;
@@ -303,6 +435,7 @@ export class Game {
 
   goToMenu() {
     this.state = 'menu';
+    this._needsRender = true;
     this.music.stop();
     this.resetWorld();
     this.ui.pauseScreen.classList.add('hidden');
@@ -310,7 +443,15 @@ export class Game {
     this.ui.hud.classList.remove('visible');
     this.ui.startScreen.classList.remove('hidden');
     this.updateBestScoreUI();
+    this.refreshLeaderboard();
     this.clock.getDelta();
+  }
+
+  async submitScoreToLeaderboard() {
+    const distance = Math.floor(this.distance);
+    if (distance < 1) return;
+    const ok = await submitScore(this.getPlayerName(), distance);
+    if (ok) this.refreshLeaderboard();
   }
 
   gameOver(reason = 'caught') {
@@ -337,6 +478,7 @@ export class Game {
 
     this.updateBestScoreUI();
     this.ui.gameOverScreen.classList.remove('hidden');
+    this.submitScoreToLeaderboard();
   }
 
   update(dt) {
@@ -344,13 +486,18 @@ export class Game {
       dt = Math.min(dt, 0.05);
 
       this.speed = this.baseSpeed + this.distance * 0.008;
-      this.distance += this.speed * dt;
+      this.boosters.update(dt);
+      const runSpeed = this.speed * this.boosters.getSpeedMultiplier();
+      this.distance += runSpeed * dt;
 
-      this.track.update(dt, this.speed);
-      this.gaps.update(dt, this.speed, this.distance);
-      this.obstacles.update(dt, this.speed, this.distance);
+      this.track.update(dt, runSpeed);
+      this.gaps.update(dt, runSpeed, this.distance);
+      this.track.updateGapMask(this.gaps);
+      this.obstacles.update(dt, runSpeed, this.distance);
+      this.pickups.update(dt, runSpeed);
       this.player.update(dt, !this.gaps.isGapAt(0));
-      this.creature.update(dt, this.player.x, this.speed, this.player.isStumbling);
+      this.player.setGhostVisual(this.boosters.isGhostActive());
+      this.creature.update(dt, this.player.x, runSpeed, this.player.isStumbling);
 
       if (this.player.isFalling && this.player.y < -3) {
         this.gameOver('fell');
@@ -358,9 +505,15 @@ export class Game {
       }
 
       const hit = this.obstacles.checkCollision(this.player);
-      if (hit) {
+      if (hit && !this.boosters.isGhostActive()) {
         this.applyHit(0);
         this.obstacles.removeObstacle(hit);
+      }
+
+      const pickup = this.pickups.checkCollection(this.player.x, this.player.laneIndex);
+      if (pickup) {
+        this.collectBooster(pickup.type);
+        this.pickups.removePickup(pickup);
       }
 
       if (this.creature.hasCaught()) {
@@ -369,9 +522,10 @@ export class Game {
       }
 
       this.music.setDanger(this.creature.dangerLevel);
-      this.environment.update(dt, this.speed, this.camera);
+      this.environment.update(dt, runSpeed, this.camera);
       this.updateCamera(dt);
       this.updateUI();
+      this.updateBoosterHUD();
       this._needsRender = true;
     }
   }
@@ -417,7 +571,12 @@ export class Game {
       this.camera.position.x *= 0.9;
     }
 
-    this.lights.rim.intensity = 1 + danger * 2;
+    this.lights.rim.material.opacity = 0.04 + danger * 0.1;
+    this.lights.rim.position.set(
+      this.player.x * 0.2,
+      4.5 + danger * 0.5,
+      this.creature.group.position.z + 3
+    );
   }
 
   updateUI() {

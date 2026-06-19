@@ -1,20 +1,63 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANES } from './scene.js';
 import { GAP_MARGIN } from './GapManager.js';
 
 const OBSTACLE_DEFS = {
-  low: { height: 0.5, meshY: 0.25, jumpable: true },
+  low: { height: 1.05, meshY: 0.525, jumpable: true },
   barrier: { height: 1.2, meshY: 0.6, jumpable: true },
-  tall: { height: 2.2, meshY: 1.1, jumpable: false },
+  tall: { height: 3.4, meshY: 1.7, jumpable: false },
 };
 
 const OBSTACLE_TYPES = Object.keys(OBSTACLE_DEFS);
+const MAX_PER_TYPE = 24;
 const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
 const LANE_MATCH = 0.85;
 
 const SPAWN_LOOKAHEAD = -110;
 const MIN_SPAWN_Z = -130;
+
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+const TEMP_POS = new THREE.Vector3();
+const TEMP_QUAT = new THREE.Quaternion();
+const TEMP_SCALE = new THREE.Vector3(1, 1, 1);
+const TEMP_MATRIX = new THREE.Matrix4();
+
+function buildSpikeClusterGeo(height, spikes) {
+  const baseY = -height / 2;
+  const parts = spikes.map(({ x, z, h, r }) => {
+    const cone = new THREE.ConeGeometry(r, h, 4);
+    cone.translate(x, baseY + h / 2, z);
+    return cone;
+  });
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function buildObstacleGeometry(type, def) {
+  if (type === 'barrier') {
+    return new THREE.BoxGeometry(1.6, def.height, 0.5);
+  }
+
+  if (type === 'low') {
+    return buildSpikeClusterGeo(def.height, [
+      { x: 0, z: 0, h: 1.02, r: 0.13 },
+      { x: -0.38, z: 0.06, h: 0.88, r: 0.1 },
+      { x: 0.34, z: -0.1, h: 0.95, r: 0.11 },
+      { x: -0.12, z: -0.14, h: 0.78, r: 0.09 },
+      { x: 0.22, z: 0.12, h: 0.9, r: 0.1 },
+    ]);
+  }
+
+  return buildSpikeClusterGeo(def.height, [
+    { x: -0.45, z: 0, h: 3.15, r: 0.17 },
+    { x: -0.12, z: 0.08, h: 3.4, r: 0.19 },
+    { x: 0.28, z: -0.06, h: 2.95, r: 0.16 },
+    { x: 0.52, z: 0.05, h: 3.25, r: 0.18 },
+  ]);
+}
 
 export class ObstacleManager {
   constructor(scene) {
@@ -53,9 +96,30 @@ export class ObstacleManager {
       }),
     };
 
+    this.instancedMeshes = {};
+    this.freeSlots = {};
+
     for (const type of OBSTACLE_TYPES) {
       const def = OBSTACLE_DEFS[type];
-      this.geometries[type] = new THREE.BoxGeometry(1.6, def.height, 0.5);
+      this.geometries[type] = buildObstacleGeometry(type, def);
+
+      const mesh = new THREE.InstancedMesh(
+        this.geometries[type],
+        this.materials[type],
+        MAX_PER_TYPE
+      );
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+
+      this.instancedMeshes[type] = mesh;
+      this.freeSlots[type] = [];
+
+      for (let i = 0; i < MAX_PER_TYPE; i++) {
+        mesh.setMatrixAt(i, HIDDEN_MATRIX);
+        this.freeSlots[type].push(i);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
     }
   }
 
@@ -95,16 +159,32 @@ export class ObstacleManager {
     }
   }
 
-  createMesh(type) {
-    const def = OBSTACLE_DEFS[type];
-    const mesh = new THREE.Mesh(this.geometries[type], this.materials[type]);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.position.y = def.meshY;
-    return mesh;
+  allocSlot(type) {
+    const slots = this.freeSlots[type];
+    if (slots.length === 0) return null;
+    return slots.pop();
+  }
+
+  freeSlot(type, slot) {
+    const mesh = this.instancedMeshes[type];
+    mesh.setMatrixAt(slot, HIDDEN_MATRIX);
+    mesh.instanceMatrix.needsUpdate = true;
+    this.freeSlots[type].push(slot);
+  }
+
+  setInstanceMatrix(entry) {
+    const def = OBSTACLE_DEFS[entry.type];
+    TEMP_POS.set(LANES[entry.lane], def.meshY, entry.z);
+    TEMP_MATRIX.compose(TEMP_POS, TEMP_QUAT, TEMP_SCALE);
+    const mesh = this.instancedMeshes[entry.type];
+    mesh.setMatrixAt(entry.slot, TEMP_MATRIX);
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   acquireObstacle(type, lane, z) {
+    const slot = this.allocSlot(type);
+    if (slot === null) return;
+
     const def = OBSTACLE_DEFS[type];
     let entry = this.pool.pop();
 
@@ -112,26 +192,23 @@ export class ObstacleManager {
       entry.type = type;
       entry.lane = lane;
       entry.z = z;
+      entry.slot = slot;
       entry.topY = def.meshY + def.height / 2;
       entry.jumpable = def.jumpable;
       entry.active = true;
-      entry.mesh.material = this.materials[type];
-      entry.mesh.position.set(LANES[lane], def.meshY, z);
-      this.scene.add(entry.mesh);
     } else {
-      const mesh = this.createMesh(type);
-      mesh.position.set(LANES[lane], def.meshY, z);
-      this.scene.add(mesh);
       entry = {
-        mesh,
         type,
         lane,
         z,
+        slot,
         topY: def.meshY + def.height / 2,
         jumpable: def.jumpable,
         active: true,
       };
     }
+
+    this.setInstanceMatrix(entry);
 
     if (this._activeCount < this.obstacles.length) {
       this.obstacles[this._activeCount] = entry;
@@ -169,19 +246,17 @@ export class ObstacleManager {
 
   releaseObstacle(entry) {
     entry.active = false;
-    this.scene.remove(entry.mesh);
+    this.freeSlot(entry.type, entry.slot);
     this.pool.push(entry);
   }
 
   removeObstacle(entry) {
+    const idx = this.obstacles.indexOf(entry);
+    if (idx === -1 || idx >= this._activeCount) return;
+
     this.releaseObstacle(entry);
-    for (let i = 0; i < this._activeCount; i++) {
-      if (this.obstacles[i] === entry) {
-        this.obstacles[i] = this.obstacles[this._activeCount - 1];
-        this._activeCount--;
-        return;
-      }
-    }
+    this.obstacles[idx] = this.obstacles[this._activeCount - 1];
+    this._activeCount--;
   }
 
   checkCollision(player) {
@@ -216,8 +291,8 @@ export class ObstacleManager {
       const obs = this.obstacles[i];
       if (!obs.active) continue;
 
-      obs.mesh.position.z += move;
-      obs.z = obs.mesh.position.z;
+      obs.z += move;
+      this.setInstanceMatrix(obs);
 
       if (obs.z > 8) {
         this.releaseObstacle(obs);
@@ -233,9 +308,7 @@ export class ObstacleManager {
 
   reset() {
     for (let i = 0; i < this._activeCount; i++) {
-      const obs = this.obstacles[i];
-      this.scene.remove(obs.mesh);
-      this.pool.push(obs);
+      this.releaseObstacle(this.obstacles[i]);
     }
     this._activeCount = 0;
     this.spawnTimer = 0.5;

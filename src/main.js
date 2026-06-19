@@ -1,4 +1,7 @@
-import { Game } from './Game.js';
+async function bootstrap() {
+  const { Game } = await import('./Game.js');
+  const game = new Game();
+  game.run();
+}
 
-const game = new Game();
-game.run();
+bootstrap();

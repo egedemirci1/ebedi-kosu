@@ -1,4 +1,17 @@
-import * as THREE from 'three';
+import {
+  WebGLRenderer,
+  Scene,
+  PerspectiveCamera,
+  AmbientLight,
+  DirectionalLight,
+  Mesh,
+  PlaneGeometry,
+  MeshBasicMaterial,
+  FogExp2,
+  ACESFilmicToneMapping,
+  PCFSoftShadowMap,
+  DoubleSide,
+} from 'three';
 
 export const LANES = [-2.2, 0, 2.2];
 export const LANE_WIDTH = 2.2;
@@ -14,7 +27,7 @@ export function getViewportSize() {
 }
 
 export function createRenderer() {
-  const renderer = new THREE.WebGLRenderer({
+  const renderer = new WebGLRenderer({
     antialias: true,
     powerPreference: 'high-performance',
   });
@@ -22,27 +35,22 @@ export function createRenderer() {
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   document.body.appendChild(renderer.domElement);
   return renderer;
 }
 
 export function createScene() {
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x080810);
+  const scene = new Scene();
+  scene.fog = new FogExp2(0x0a0818, 0.018);
   return scene;
 }
 
 export function createCamera() {
   const { width, height } = getViewportSize();
-  const camera = new THREE.PerspectiveCamera(
-    65,
-    width / height,
-    0.1,
-    220
-  );
+  const camera = new PerspectiveCamera(65, width / height, 0.1, 220);
   camera.position.set(0, 5.5, 8);
   camera.lookAt(0, 1.5, -5);
   return camera;
@@ -59,13 +67,13 @@ export function getCameraProfile(aspect) {
 }
 
 export function setupLights(scene) {
-  const ambient = new THREE.AmbientLight(0x332255, 0.6);
+  const ambient = new AmbientLight(0x332255, 0.6);
   scene.add(ambient);
 
-  const moon = new THREE.DirectionalLight(0x8888ff, 0.8);
+  const moon = new DirectionalLight(0x8888ff, 0.8);
   moon.position.set(5, 12, -3);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.mapSize.set(1024, 1024);
   moon.shadow.camera.near = 1;
   moon.shadow.camera.far = 90;
   moon.shadow.camera.left = -22;
@@ -76,8 +84,20 @@ export function setupLights(scene) {
   moon.target.position.set(0, 0, -40);
   scene.add(moon.target);
 
-  const rim = new THREE.PointLight(0xff2244, 1.2, 55);
-  rim.position.set(0, 3, 6);
+  const rim = new Mesh(
+    new PlaneGeometry(10, 6),
+    new MeshBasicMaterial({
+      color: 0xff2244,
+      transparent: true,
+      opacity: 0.06,
+      depthWrite: false,
+      depthTest: true,
+      fog: false,
+      side: DoubleSide,
+    })
+  );
+  rim.rotation.x = -0.25;
+  rim.position.set(0, 4.5, 18);
   scene.add(rim);
 
   return { moon, rim };

@@ -18,17 +18,41 @@
             <span class="label">Tehlike</span>
             <div id="danger-bar"><div id="danger-fill"></div></div>
           </div>
+          <div id="booster-hud" class="booster-hud">
+            <div id="booster-ghost" class="booster-chip ghost">Hayalet <span class="booster-time"></span></div>
+            <div id="booster-jump" class="booster-chip jump">Süper zıpla</div>
+            <div id="booster-speed" class="booster-chip speed">Hız <span class="booster-time"></span></div>
+          </div>
         </div>
         <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
       </div>
 
       <div id="start-screen" class="overlay">
+        <aside id="leaderboard-panel" class="leaderboard-panel">
+          <h2 class="leaderboard-title">En İyiler</h2>
+          <ol id="leaderboard-list" class="leaderboard-list"></ol>
+          <p id="leaderboard-empty" class="leaderboard-msg hidden">Henüz skor yok</p>
+          <p id="leaderboard-error" class="leaderboard-msg leaderboard-error hidden">Liste yüklenemedi</p>
+        </aside>
         <h1>EBEDİ KOŞU</h1>
         <p class="subtitle">Geçmişin seni kovalıyor. Koş ve geçmişinden kaç.</p>
         <p id="best-score" class="best-score"></p>
+        <div class="player-name-field">
+          <label for="player-name">Adın</label>
+          <input
+            id="player-name"
+            type="text"
+            maxlength="20"
+            autocomplete="nickname"
+            placeholder="2–20 karakter"
+            required
+          />
+          <p id="player-name-error" class="player-name-error hidden">Geçerli bir ad gir (2–20 karakter)</p>
+        </div>
         <div class="controls-info">
           <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
           <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
+          <div>Parlayan güçlendiricileri topla — hayalet, süper zıpla, hız</div>
           <div><kbd>Esc</kbd> — Duraklat</div>
           <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
         </div>

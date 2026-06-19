@@ -7,13 +7,21 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "start": "serve dist -s -l 3000"
+    "start": "node server/index.js",
+    "dev:full": "npm run build && node server/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "serve": "^14.2.4",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
     "three": "^0.170.0"
   },
   "devDependencies": {
-    "vite": "^6.0.3"
+    "@vitest/coverage-v8": "^4.1.9",
+    "happy-dom": "^20.10.6",
+    "vite": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

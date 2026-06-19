@@ -1,7 +1,8 @@
 export class Sfx {
-  constructor() {
-    this.ctx = null;
+  constructor(music) {
+    this.music = music;
     this.enabled = true;
+    this._readyPromise = null;
   }
 
   setEnabled(on) {
@@ -12,19 +13,37 @@ export class Sfx {
     return this.enabled;
   }
 
-  init() {
-    if (this.ctx) return;
-    this.ctx = new AudioContext();
+  get ctx() {
+    return this.music.getContext();
   }
 
-  async ensureReady() {
-    this.init();
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
+  ensureReady() {
+    if (!this._readyPromise) {
+      this._readyPromise = (async () => {
+        const ctx = this.ctx;
+        if (ctx.state === 'suspended') await ctx.resume();
+      })();
+    }
+    return this._readyPromise;
   }
 
   playJump() {
     if (!this.enabled) return;
-    this.ensureReady();
+    void this._playJump();
+  }
+
+  playWallHit(side = 0) {
+    if (!this.enabled) return;
+    void this._playWallHit(side);
+  }
+
+  playObstacleHit() {
+    if (!this.enabled) return;
+    void this._playObstacleHit();
+  }
+
+  async _playJump() {
+    await this.ensureReady();
     const t = this.ctx.currentTime;
 
     const master = this.ctx.createGain();
@@ -47,22 +66,21 @@ export class Sfx {
     this.playNoiseBurst(master, t, 0.06, 900, 'bandpass', 0.4, 0.07);
   }
 
-  playWallHit(side = 0) {
-    if (!this.enabled) return;
-    this.ensureReady();
+  async _playWallHit(side = 0) {
+    await this.ensureReady();
     const t = this.ctx.currentTime;
 
     const master = this.ctx.createGain();
     master.gain.setValueAtTime(0.42, t);
     master.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-    master.connect(this.ctx.destination);
 
     if (side !== 0) {
       const panner = this.ctx.createStereoPanner();
       panner.pan.value = side * 0.65;
-      master.disconnect();
       master.connect(panner);
       panner.connect(this.ctx.destination);
+    } else {
+      master.connect(this.ctx.destination);
     }
 
     const thump = this.ctx.createOscillator();
@@ -80,9 +98,8 @@ export class Sfx {
     this.playNoiseBurst(master, t, 0.08, 320, 'lowpass', 0.35, 0.12);
   }
 
-  playObstacleHit() {
-    if (!this.enabled) return;
-    this.ensureReady();
+  async _playObstacleHit() {
+    await this.ensureReady();
     const t = this.ctx.currentTime;
 
     const master = this.ctx.createGain();
@@ -115,6 +132,37 @@ export class Sfx {
     crackGain.connect(master);
     crack.start(t + 0.01);
     crack.stop(t + 0.09);
+  }
+
+  async _playBoosterPickup() {
+    await this.ensureReady();
+    const t = this.ctx.currentTime;
+
+    const master = this.ctx.createGain();
+    master.gain.setValueAtTime(0.32, t);
+    master.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    master.connect(this.ctx.destination);
+
+    const notes = [660, 880, 1100];
+    notes.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const start = t + i * 0.05;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.35, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    });
+  }
+
+  playBoosterPickup() {
+    if (!this.enabled) return;
+    void this._playBoosterPickup();
   }
 
   playNoiseBurst(master, t, duration, freq, filterType, vol, decay) {

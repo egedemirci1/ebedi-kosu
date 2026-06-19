@@ -1,18 +1,43 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TRACK_WIDTH, RECYCLE_AFTER_Z } from './Track.js';
+import { TRACK_WIDTH, RECYCLE_AFTER_Z, FLOOR_THICKNESS, WALL_X, WALL_TILE_WIDTH } from './Track.js';
 
 const GAP_START_DISTANCE = 80;
+const MIN_GAP_WIDTH = 2.4;
+const ABS_MAX_GAP_WIDTH = 4.1;
+const MIN_FLOOR_BETWEEN_GAPS = 9;
 const MIN_GAP_INTERVAL = 22;
-const MAX_GAP_INTERVAL = 38;
+const MAX_GAP_INTERVAL = 54;
 const FIRST_GAP_Z = -105;
 const GAP_LOOKAHEAD = -165;
 const GAP_MARGIN = 4;
+const EMBER_COUNT = 4;
+const FLOOR_LEG_WIDTH = 0.48;
+const FLOOR_LEG_DEPTH = 0.48;
+const FLOOR_LEG_DROP = 22;
+const WALL_LEG_DEPTH = 0.52;
 
-const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
-const UNIT_CONE = new THREE.ConeGeometry(1, 1, 3);
-const STRIPE_BOX = new THREE.BoxGeometry(0.9, 0.05, 0.35);
-const CHEVRON_BOX = new THREE.BoxGeometry(0.15, 0.06, 1);
+/** Mirror Player.js — used to cap gap width so normal jumps always clear. */
+const JUMP_VY = 9.5;
+const GRAVITY = 24;
+const JUMP_CLEAR_SAFETY = 0.78;
+const DEFAULT_RUN_SPEED = 14;
+
+export function getMaxJumpableGapWidth(speed = DEFAULT_RUN_SPEED) {
+  const airTime = (2 * JUMP_VY) / GRAVITY;
+  const physicsMax = airTime * speed * JUMP_CLEAR_SAFETY;
+  return Math.max(MIN_GAP_WIDTH, Math.min(ABS_MAX_GAP_WIDTH, physicsMax));
+}
+
+export function randomGapInterval() {
+  const roll = Math.random();
+  if (roll < 0.2) {
+    return MIN_GAP_INTERVAL + Math.random() * 10;
+  }
+  if (roll < 0.75) {
+    return MIN_GAP_INTERVAL + Math.random() * (MAX_GAP_INTERVAL - MIN_GAP_INTERVAL);
+  }
+  return MAX_GAP_INTERVAL - 14 + Math.random() * 18;
+}
 
 export class GapManager {
   constructor(scene) {
@@ -24,87 +49,178 @@ export class GapManager {
     this.obstacleManager = null;
     this.time = 0;
     this._activeCount = 0;
-
-    this.edgeMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2030,
-      emissive: 0x331122,
-      emissiveIntensity: 0.35,
-      roughness: 0.85,
-      fog: false,
-    });
-
-    this.cliffMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1018,
-      emissive: 0x220818,
-      emissiveIntensity: 0.2,
-      roughness: 1,
-      flatShading: true,
-      fog: false,
-    });
-
-    this.warningMat = new THREE.MeshStandardMaterial({
-      color: 0xffaa00,
-      emissive: 0xff8800,
-      emissiveIntensity: 1.2,
-      roughness: 0.4,
-      fog: false,
-    });
-
-    this.rimMat = new THREE.MeshStandardMaterial({
-      color: 0xff2244,
-      emissive: 0xff1133,
-      emissiveIntensity: 1.5,
-      roughness: 0.3,
-      fog: false,
-    });
-
-    this.floorCoverMat = new THREE.MeshBasicMaterial({ color: 0x080810, fog: false });
-
-    this.voidLayerMats = [
-      new THREE.MeshBasicMaterial({ color: 0x080010, fog: false }),
-      new THREE.MeshBasicMaterial({ color: 0x040008, fog: false }),
-      new THREE.MeshBasicMaterial({ color: 0x020004, fog: false }),
-      new THREE.MeshBasicMaterial({ color: 0x000001, fog: false }),
-    ];
+    this.currentSpeed = DEFAULT_RUN_SPEED;
 
     this.emberMats = [
       new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true, fog: false }),
       new THREE.MeshBasicMaterial({ color: 0xff1144, transparent: true, fog: false }),
     ];
 
-    this.ledgeGeo = new THREE.BoxGeometry(TRACK_WIDTH, 0.4, 0.7);
-    this.rimGeo = new THREE.BoxGeometry(TRACK_WIDTH + 0.1, 0.06, 0.12);
     this.emberGeo = new THREE.SphereGeometry(0.06, 4, 4);
-    this.warningGeo = this.buildWarningGeometry();
+
+    this.floorLegMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1428,
+      emissive: 0x2a1840,
+      emissiveIntensity: 0.35,
+      roughness: 0.82,
+      metalness: 0.08,
+      fog: false,
+    });
+    this.wallLegMat = new THREE.MeshStandardMaterial({
+      color: 0x2c2648,
+      emissive: 0x1a1030,
+      emissiveIntensity: 0.4,
+      roughness: 0.65,
+      metalness: 0.15,
+      fog: false,
+    });
+    const legSpan = FLOOR_LEG_DROP + FLOOR_THICKNESS;
+    this.floorLegGeo = new THREE.BoxGeometry(FLOOR_LEG_WIDTH, legSpan, FLOOR_LEG_DEPTH);
+    this.legTopY = 0;
+    this.legCenterY = -legSpan / 2;
+    this.wallLegGeo = new THREE.BoxGeometry(WALL_TILE_WIDTH, legSpan, WALL_LEG_DEPTH);
+    this.track = null;
   }
 
-  buildWarningGeometry() {
-    const parts = [];
+  setTrack(track) {
+    this.track = track;
+  }
 
-    for (let row = 0; row < 3; row++) {
-      for (let i = -3; i <= 3; i++) {
-        const geo = STRIPE_BOX.clone();
-        geo.translate(i * 1.15, 0.03, row * 0.55);
-        parts.push(geo);
+  resolveCliffEdges(gapZ, width) {
+    const startZ = gapZ - width / 2;
+    const endZ = gapZ + width / 2;
+    if (this.track) {
+      return {
+        backEdge: this.track.getFloorEdgeBeforeGap(startZ, gapZ),
+        frontEdge: this.track.getFloorEdgeAfterGap(endZ, gapZ),
+      };
+    }
+    return { backEdge: startZ, frontEdge: endZ };
+  }
+
+  randomGapWidth(speed = this.currentSpeed) {
+    const maxW = getMaxJumpableGapWidth(speed);
+    if (maxW <= MIN_GAP_WIDTH) return MIN_GAP_WIDTH;
+    return MIN_GAP_WIDTH + Math.random() * (maxW - MIN_GAP_WIDTH);
+  }
+
+  /** Solid floor run between gap edges (not center-to-center). */
+  floorRunBetween(proposedZ, proposedWidth, gap) {
+    const pStart = proposedZ - proposedWidth / 2;
+    const pEnd = proposedZ + proposedWidth / 2;
+    const eStart = gap.startZ;
+    const eEnd = gap.endZ;
+
+    if (pEnd <= eStart) return eStart - pEnd;
+    if (pStart >= eEnd) return pStart - eEnd;
+    return 0;
+  }
+
+  isTooCloseToGap(z, width = 3) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      const floorRun = this.floorRunBetween(z, width, gap);
+      if (floorRun < MIN_FLOOR_BETWEEN_GAPS) return true;
+    }
+    return false;
+  }
+
+  setGapBounds(entry, z, width) {
+    entry.width = width;
+    entry.z = z;
+    entry.startZ = z - width / 2;
+    entry.endZ = z + width / 2;
+    entry.group.position.z = z;
+  }
+
+  /** Wall legs aligned to track wall X, snapped to visible floor tile edges. */
+  addWallGapLegs(group, backLocal, frontLocal) {
+    const legY = this.legCenterY;
+    const edgeCenters = [
+      backLocal - WALL_LEG_DEPTH / 2,
+      frontLocal + WALL_LEG_DEPTH / 2,
+    ];
+
+    for (const wallSide of [-1, 1]) {
+      for (const z of edgeCenters) {
+        const leg = new THREE.Mesh(this.wallLegGeo, this.wallLegMat);
+        leg.position.set(wallSide * WALL_X, legY, z);
+        group.add(leg);
       }
     }
+  }
 
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        const geo = CHEVRON_BOX.clone();
-        geo.scale(1, 1, 0.6 + i * 0.15);
-        const matrix = new THREE.Matrix4().makeRotationY(side * 0.5);
-        matrix.setPosition(side * (0.8 + i * 0.35), 0.06, 1.2 - i * 0.3);
-        geo.applyMatrix4(matrix);
-        parts.push(geo);
-      }
+  /** Vertical floor legs — outer faces flush with floor slab corners, drop into void. */
+  addFloorCornerLegs(group, backLocal, frontLocal) {
+    const halfTrack = TRACK_WIDTH / 2;
+    const legY = this.legCenterY;
+
+    const corners = [
+      { x: -halfTrack + FLOOR_LEG_WIDTH / 2, z: backLocal - FLOOR_LEG_DEPTH / 2 },
+      { x: halfTrack - FLOOR_LEG_WIDTH / 2, z: backLocal - FLOOR_LEG_DEPTH / 2 },
+      { x: -halfTrack + FLOOR_LEG_WIDTH / 2, z: frontLocal + FLOOR_LEG_DEPTH / 2 },
+      { x: halfTrack - FLOOR_LEG_WIDTH / 2, z: frontLocal + FLOOR_LEG_DEPTH / 2 },
+    ];
+
+    for (const { x, z } of corners) {
+      const leg = new THREE.Mesh(this.floorLegGeo, this.floorLegMat);
+      leg.position.set(x, legY, z);
+      group.add(leg);
     }
+  }
 
-    return mergeGeometries(parts, false);
+  addGapAtmosphere(group, width, embers) {
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      const scale = 0.65 + Math.random() * 1.0;
+      const ember = new THREE.Mesh(this.emberGeo, this.emberMats[i % 2]);
+      ember.scale.setScalar(scale);
+      ember.position.set(
+        (Math.random() - 0.5) * (TRACK_WIDTH - 2),
+        -2 - Math.random() * 6,
+        (Math.random() - 0.5) * (width - 1)
+      );
+      embers.push({ mesh: ember, phase: Math.random() * Math.PI * 2, baseY: ember.position.y });
+      group.add(ember);
+    }
+  }
+
+  buildGapGroup(width, gapZ = 0) {
+    const group = new THREE.Group();
+    const embers = [];
+    const { backEdge, frontEdge } = this.resolveCliffEdges(gapZ, width);
+    const backLocal = backEdge - gapZ;
+    const frontLocal = frontEdge - gapZ;
+
+    this.addGapAtmosphere(group, width, embers);
+    this.addFloorCornerLegs(group, backLocal, frontLocal);
+    this.addWallGapLegs(group, backLocal, frontLocal);
+
+    return { group, embers };
+  }
+
+  discardGroup(group) {
+    while (group.children.length > 0) {
+      group.remove(group.children[0]);
+    }
+  }
+
+  repoolGapEntry(entry, z, width) {
+    this.discardGroup(entry.group);
+    const built = this.buildGapGroup(width, z);
+    entry.group = built.group;
+    entry.embers = built.embers;
+    this.setGapBounds(entry, z, width);
+    entry.active = true;
+    this.scene.add(entry.group);
   }
 
   setObstacleManager(obstacleManager) {
     this.obstacleManager = obstacleManager;
+  }
+
+  setPickupManager(pickupManager) {
+    this.pickupManager = pickupManager;
   }
 
   isGapAt(worldZ) {
@@ -125,147 +241,49 @@ export class GapManager {
     return false;
   }
 
-  addCliffEdge(group, side, edgeZ) {
-    const ledge = new THREE.Mesh(this.ledgeGeo, this.edgeMat);
-    ledge.position.set(0, -0.08, edgeZ);
-    ledge.castShadow = true;
-    group.add(ledge);
+  /** True when [centerZ - halfSpan, centerZ + halfSpan] hits a gap or its margin. */
+  overlapsGapSpan(centerZ, halfSpan, margin = GAP_MARGIN) {
+    const spanStart = centerZ - halfSpan;
+    const spanEnd = centerZ + halfSpan;
 
-    const rim = new THREE.Mesh(this.rimGeo, this.rimMat);
-    rim.position.set(0, 0.1, edgeZ + side * 0.28);
-    group.add(rim);
-
-    for (let i = -3; i <= 3; i++) {
-      const sx = 0.5 + Math.random() * 0.4;
-      const chunk = new THREE.Mesh(UNIT_BOX, this.edgeMat);
-      chunk.scale.set(sx, 0.12, 0.35);
-      chunk.position.set(
-        i * 1.1 + (Math.random() - 0.5) * 0.3,
-        0.04,
-        edgeZ + side * (0.12 + Math.random() * 0.2)
-      );
-      chunk.rotation.y = (Math.random() - 0.5) * 0.5;
-      group.add(chunk);
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      const blockedStart = gap.startZ - margin;
+      const blockedEnd = gap.endZ + margin;
+      if (spanEnd >= blockedStart && spanStart <= blockedEnd) return true;
     }
-
-    for (let i = 0; i < 4; i++) {
-      const cliffH = 2 + Math.random() * 3;
-      const cliff = new THREE.Mesh(UNIT_BOX, this.cliffMat);
-      cliff.scale.set(1.2 + Math.random(), cliffH, 0.5);
-      cliff.position.set(
-        (Math.random() - 0.5) * 6,
-        -cliffH / 2 - 0.2,
-        edgeZ + side * 0.35
-      );
-      cliff.rotation.z = side * (0.05 + Math.random() * 0.12);
-      group.add(cliff);
-    }
-
-    for (let i = -3; i <= 3; i++) {
-      const spikeH = 0.5 + Math.random() * 0.6;
-      const spike = new THREE.Mesh(UNIT_CONE, this.cliffMat);
-      spike.scale.set(0.08, spikeH, 0.08);
-      spike.position.set(i * 1.0, -0.35 - Math.random() * 0.3, edgeZ + side * 0.2);
-      spike.rotation.x = Math.PI;
-      spike.rotation.z = (Math.random() - 0.5) * 0.4;
-      group.add(spike);
-    }
+    return false;
   }
 
-  addVoidDepth(group, width, embers, voidGlows) {
-    const voidW = TRACK_WIDTH - 0.4;
-    const voidD = width - 0.2;
-    const layers = [
-      { y: -1.5, h: 1.5 },
-      { y: -3.5, h: 2.5 },
-      { y: -6.5, h: 4 },
-      { y: -10, h: 5 },
-    ];
-
-    for (let i = 0; i < layers.length; i++) {
-      const layer = layers[i];
-      const box = new THREE.Mesh(UNIT_BOX, this.voidLayerMats[i]);
-      box.scale.set(voidW, layer.h, voidD);
-      box.position.y = layer.y;
-      group.add(box);
-    }
-
-    for (let i = 0; i < 12; i++) {
-      const scale = 0.65 + Math.random() * 1.0;
-      const ember = new THREE.Mesh(this.emberGeo, this.emberMats[i % 3 === 0 ? 0 : 1]);
-      ember.scale.setScalar(scale);
-      ember.position.set(
-        (Math.random() - 0.5) * (TRACK_WIDTH - 2),
-        -1.5 - Math.random() * 6,
-        (Math.random() - 0.5) * (width - 1)
-      );
-      embers.push({ mesh: ember, phase: Math.random() * Math.PI * 2, baseY: ember.position.y });
-      group.add(ember);
-    }
-
-    const voidGlow = new THREE.PointLight(0xff0022, 1.2, width + 8);
-    voidGlow.position.y = -3;
-    voidGlows.push({ light: voidGlow, kind: 'red' });
-    group.add(voidGlow);
-
-    const voidGlow2 = new THREE.PointLight(0xff4400, 0.5, width + 5);
-    voidGlow2.position.y = -1;
-    voidGlows.push({ light: voidGlow2, kind: 'orange' });
-    group.add(voidGlow2);
+  /** Hide track pieces only when the tile center sits inside a gap. */
+  coversFloorAt(worldZ) {
+    return this.isGapAt(worldZ);
   }
 
-  buildGapGroup(width) {
-    const group = new THREE.Group();
-    const embers = [];
-    const voidGlows = [];
-
-    const floorCover = new THREE.Mesh(UNIT_BOX, this.floorCoverMat);
-    floorCover.scale.set(TRACK_WIDTH + 0.4, 0.25, width + 0.6);
-    floorCover.position.y = -0.02;
-    group.add(floorCover);
-
-    this.addVoidDepth(group, width, embers, voidGlows);
-
-    for (const side of [-1, 1]) {
-      const edgeZ = side < 0 ? -width / 2 : width / 2;
-      this.addCliffEdge(group, side, edgeZ);
-    }
-
-    const warnMesh = new THREE.Mesh(this.warningGeo, this.warningMat);
-    warnMesh.position.z = -width / 2 - 5;
-    group.add(warnMesh);
-
-    return { group, embers, voidGlows };
+  /** @deprecated use coversFloorAt — kept for any external callers */
+  overlapsSegmentZ(segZ) {
+    return this.coversFloorAt(segZ);
   }
 
-  acquireGap(z) {
+  acquireGap(z, width = this.randomGapWidth()) {
     let entry;
 
     if (this.gapPool.length > 0) {
       entry = this.gapPool.pop();
-      entry.z = z;
-      entry.startZ = z - entry.width / 2;
-      entry.endZ = z + entry.width / 2;
-      entry.active = true;
-      entry.group.position.z = z;
-      this.scene.add(entry.group);
-      for (const ember of entry.embers) {
-        ember.mesh.position.y = ember.baseY;
-      }
+      this.repoolGapEntry(entry, z, width);
     } else {
-      const width = 3.5 + Math.random() * 2;
-      const built = this.buildGapGroup(width);
+      const built = this.buildGapGroup(width, z);
       entry = {
         group: built.group,
         embers: built.embers,
-        voidGlows: built.voidGlows,
         width,
         z,
         startZ: z - width / 2,
         endZ: z + width / 2,
         active: true,
       };
-      entry.group.position.z = z;
+      this.setGapBounds(entry, z, width);
       this.scene.add(entry.group);
     }
 
@@ -285,23 +303,43 @@ export class GapManager {
     this.gapPool.push(entry);
   }
 
-  spawnGap(z) {
-    this.acquireGap(z);
+  spawnGap(z, width) {
+    this.acquireGap(z, width);
+  }
+
+  canSpawnAt(z, width) {
+    if (this.obstacleManager?.hasObstacleNear(z, 5)) return false;
+    if (this.pickupManager?.hasPickupOverlappingGap(z, width)) return false;
+    if (this.isTooCloseToGap(z, width)) return false;
+    return true;
   }
 
   trySpawnNext() {
-    for (let attempt = 0; attempt < 6; attempt++) {
-      if (!this.obstacleManager?.hasObstacleNear(this.nextGapZ, 5)) {
-        this.spawnGap(this.nextGapZ);
-        this.nextGapZ -= MIN_GAP_INTERVAL + Math.random() * (MAX_GAP_INTERVAL - MIN_GAP_INTERVAL);
-        return;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const width = this.randomGapWidth();
+      if (this.canSpawnAt(this.nextGapZ, width)) {
+        this.spawnGap(this.nextGapZ, width);
+        this.nextGapZ -= randomGapInterval();
+        return true;
       }
       this.nextGapZ -= 4;
     }
+    return false;
+  }
+
+  getMinActiveGapZ() {
+    let minZ = Infinity;
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      if (gap.z < minZ) minZ = gap.z;
+    }
+    return minZ;
   }
 
   update(dt, speed, distance) {
     this.time += dt;
+    this.currentSpeed = speed;
 
     if (distance < GAP_START_DISTANCE) return;
 
@@ -309,22 +347,18 @@ export class GapManager {
       this.spawnedFirst = true;
       this.nextGapZ = FIRST_GAP_Z;
       this.trySpawnNext();
-      this.trySpawnNext();
     }
 
-    let furthestZ = this.nextGapZ;
-    for (let i = 0; i < this._activeCount; i++) {
-      if (this.gaps[i].active && this.gaps[i].z < furthestZ) {
-        furthestZ = this.gaps[i].z;
+    const furthestActiveZ = this.getMinActiveGapZ();
+
+    if (this._activeCount === 0 || furthestActiveZ > GAP_LOOKAHEAD) {
+      if (this._activeCount > 0 && this.nextGapZ >= furthestActiveZ - MIN_GAP_INTERVAL) {
+        this.nextGapZ = furthestActiveZ - randomGapInterval();
       }
-    }
-
-    if (furthestZ > GAP_LOOKAHEAD) {
       this.trySpawnNext();
     }
 
     const move = speed * dt;
-    const pulse = 0.85 + Math.sin(this.time * 3) * 0.15;
     let write = 0;
 
     for (let i = 0; i < this._activeCount; i++) {
@@ -343,10 +377,6 @@ export class GapManager {
           ember.baseY + Math.sin(this.time * 2 + ember.phase) * 0.4;
       }
 
-      for (const glow of gap.voidGlows) {
-        glow.light.intensity = (glow.kind === 'red' ? 1.2 : 0.5) * pulse;
-      }
-
       if (gap.startZ > RECYCLE_AFTER_Z) {
         this.releaseGap(gap);
         continue;
@@ -363,6 +393,7 @@ export class GapManager {
     for (let i = 0; i < this._activeCount; i++) {
       const gap = this.gaps[i];
       this.scene.remove(gap.group);
+      this.discardGroup(gap.group);
       this.gapPool.push(gap);
     }
     this._activeCount = 0;
@@ -372,4 +403,10 @@ export class GapManager {
   }
 }
 
-export { GAP_START_DISTANCE, GAP_MARGIN };
+export {
+  GAP_START_DISTANCE,
+  GAP_MARGIN,
+  MIN_FLOOR_BETWEEN_GAPS,
+  MIN_GAP_WIDTH,
+  ABS_MAX_GAP_WIDTH,
+};

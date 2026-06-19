@@ -7,6 +7,7 @@ export class Creature {
     this.targetDistance = 14;
     this.minDistance = 1.8;
     this.lungeTimer = 0;
+    this.animTime = 0;
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x1a0818,
@@ -18,24 +19,18 @@ export class Creature {
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 1.8, 4, 8), bodyMat);
     torso.position.y = 2.2;
-    torso.castShadow = true;
     this.group.add(torso);
 
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), bodyMat.clone());
     head.position.y = 3.5;
     head.scale.set(1.1, 1, 0.9);
-    head.castShadow = true;
     this.group.add(head);
 
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1133, fog: false });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1133, fog: true });
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), eyeMat);
       eye.position.set(side * 0.22, 3.55, 0.42);
       this.group.add(eye);
-
-      const eyeGlow = new THREE.PointLight(0xff0022, 0.8, 4);
-      eyeGlow.position.copy(eye.position);
-      this.group.add(eyeGlow);
     }
 
     for (let i = 0; i < 4; i++) {
@@ -54,11 +49,6 @@ export class Creature {
       tentacle.userData.phase = i;
       tentacle.userData.isTentacle = true;
     }
-
-    const aura = new THREE.PointLight(0xff0022, 1.5, 12);
-    aura.position.y = 2.5;
-    this.group.add(aura);
-    this.aura = aura;
 
     this.torso = torso;
     this.head = head;
@@ -82,6 +72,8 @@ export class Creature {
   }
 
   update(dt, playerX, gameSpeed, playerStumbling) {
+    this.animTime += dt;
+
     const catchUpRate = playerStumbling ? 6 : 1.2;
     const baseTarget = Math.max(
       this.minDistance,
@@ -97,24 +89,23 @@ export class Creature {
 
     this.chaseDistance += (this.targetDistance - this.chaseDistance) * dt * catchUpRate;
 
-    const sway = Math.sin(Date.now() * 0.004) * 0.3;
+    const t = this.animTime;
+    const sway = Math.sin(t * 4) * 0.3;
     this.group.position.set(
       playerX * 0.3 + sway,
-      Math.sin(Date.now() * 0.006) * 0.1,
+      Math.sin(t * 6) * 0.1,
       this.chaseDistance
     );
 
-    this.torso.rotation.x = Math.sin(Date.now() * 0.005) * 0.08;
-    this.head.rotation.y = Math.sin(Date.now() * 0.003) * 0.15;
+    this.torso.rotation.x = Math.sin(t * 5) * 0.08;
+    this.head.rotation.y = Math.sin(t * 3) * 0.15;
 
     this.group.children.forEach((child) => {
       if (child.userData.isTentacle) {
         child.rotation.x =
-          0.4 + child.userData.phase * 0.2 + Math.sin(Date.now() * 0.008 + child.userData.phase) * 0.25;
+          0.4 + child.userData.phase * 0.2 + Math.sin(t * 8 + child.userData.phase) * 0.25;
       }
     });
-
-    this.aura.intensity = 1 + this.dangerLevel * 3;
   }
 
   hasCaught() {
@@ -125,6 +116,7 @@ export class Creature {
     this.chaseDistance = 14;
     this.targetDistance = 14;
     this.lungeTimer = 0;
+    this.animTime = 0;
     this.group.position.set(0, 0, 14);
   }
 }

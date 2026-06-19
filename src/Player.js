@@ -3,9 +3,17 @@ import { LANES } from './scene.js';
 
 const WALL_BUMP_AMOUNT = 1.15;
 const WALL_BUMP_DURATION = 0.5;
+const GRAVITY = 24;
+const VOID_GRAVITY = 48;
+const VOID_DROP_SPEED = 6;
+const JUMP_VY = 9.5;
+const SUPER_JUMP_VY = 13.8;
+const TRAIL_COUNT = 3;
+const TRAIL_SPACING = 0.35;
 
 export class Player {
   constructor(scene) {
+    this.scene = scene;
     this.group = new THREE.Group();
     this.laneIndex = 1;
     this.targetX = LANES[1];
@@ -22,6 +30,8 @@ export class Player {
     this.wallBounceSide = 0;
     this.wallBounceHomeX = 0;
     this.runPhase = 0;
+    this.trailSpawnTimer = 0;
+    this.isGhostVisual = false;
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x44aaff,
@@ -29,7 +39,7 @@ export class Player {
       emissiveIntensity: 0.4,
       roughness: 0.4,
       metalness: 0.2,
-      fog: false,
+      fog: true,
     });
 
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.7, 4, 8), bodyMat);
@@ -45,12 +55,48 @@ export class Player {
     head.castShadow = true;
     this.group.add(head);
 
-    const glow = new THREE.PointLight(0x44ccff, 0.6, 6);
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 8, 8),
+      new THREE.MeshBasicMaterial({
+        color: 0x44ccff,
+        transparent: true,
+        opacity: 0.45,
+        depthWrite: false,
+        fog: true,
+      })
+    );
     glow.position.y = 1.2;
     this.group.add(glow);
 
     this.body = body;
     this.head = head;
+    this.glow = glow;
+    this.bodyMat = bodyMat;
+    this.headMat = head.material;
+
+    this.trails = [];
+    for (let i = 0; i < TRAIL_COUNT; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28 - i * 0.05, 6, 6),
+        new THREE.MeshBasicMaterial({
+          color: 0x44ccff,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          fog: true,
+        })
+      );
+      scene.add(mesh);
+      this.trails.push({
+        mesh,
+        life: 0,
+        maxLife: 0.28 + i * 0.06,
+        x: this.x,
+        y: 0.8,
+        z: (i + 1) * TRAIL_SPACING,
+      });
+    }
+
     scene.add(this.group);
   }
 
@@ -72,12 +118,33 @@ export class Player {
     return 'wall';
   }
 
-  jump() {
+  jump(superJump = false) {
     if (!this.onGround) return false;
     this.onGround = false;
     this.isJumping = true;
-    this.vy = 9.5;
+    this.vy = superJump ? SUPER_JUMP_VY : JUMP_VY;
     return true;
+  }
+
+  setGhostVisual(active) {
+    if (this.isGhostVisual === active) return;
+    this.isGhostVisual = active;
+
+    if (active) {
+      this.bodyMat.transparent = true;
+      this.headMat.transparent = true;
+      this.bodyMat.opacity = 0.55;
+      this.headMat.opacity = 0.55;
+      this.glow.material.color.setHex(0xaaeeff);
+      this.glow.material.opacity = 0.65;
+    } else {
+      this.bodyMat.opacity = 1;
+      this.headMat.opacity = 1;
+      this.bodyMat.transparent = false;
+      this.headMat.transparent = false;
+      this.glow.material.color.setHex(0x44ccff);
+      this.glow.material.opacity = 0.45;
+    }
   }
 
   stumble(duration = 0.6, side = 0) {
@@ -96,9 +163,62 @@ export class Player {
   resetVisuals() {
     this.body.position.x = 0;
     this.head.position.x = 0;
+    this.body.rotation.x = 0;
+    this.head.rotation.x = 0;
     this.body.rotation.z = 0;
     this.body.position.y = 1.05;
     this.head.position.y = 1.75;
+    this.setGhostVisual(false);
+    this.resetTrails();
+  }
+
+  resetTrails() {
+    for (const trail of this.trails) {
+      trail.life = 0;
+      trail.mesh.material.opacity = 0;
+      trail.mesh.visible = false;
+    }
+    this.trailSpawnTimer = 0;
+  }
+
+  updateTrails(dt) {
+    const running = this.onGround && !this.isFalling && !this.isStumbling;
+
+    if (running) {
+      this.trailSpawnTimer += dt;
+      if (this.trailSpawnTimer >= 0.045) {
+        this.trailSpawnTimer = 0;
+        const slot = this.trails.reduce(
+          (oldest, t, i, arr) => (t.life / t.maxLife < arr[oldest].life / arr[oldest].maxLife ? i : oldest),
+          0
+        );
+        const trail = this.trails[slot];
+        trail.life = trail.maxLife;
+        trail.x = this.x;
+        trail.y = this.y + 0.75 + Math.sin(this.runPhase) * 0.06;
+        trail.z = TRAIL_SPACING * 0.5;
+        trail.mesh.visible = true;
+      }
+    }
+
+    for (const trail of this.trails) {
+      if (trail.life <= 0) {
+        trail.mesh.material.opacity = 0;
+        trail.mesh.visible = false;
+        continue;
+      }
+
+      trail.life -= dt;
+      trail.z += dt * 9;
+      const t = Math.max(0, trail.life / trail.maxLife);
+      trail.mesh.position.set(trail.x, trail.y, trail.z);
+      trail.mesh.material.opacity = t * 0.38;
+      trail.mesh.scale.setScalar(0.55 + t * 0.45);
+
+      if (trail.life <= 0) {
+        trail.mesh.visible = false;
+      }
+    }
   }
 
   get lane() {
@@ -130,8 +250,10 @@ export class Player {
       this.x += (this.targetX - this.x) * Math.min(1, dt * 14);
     }
 
-    if (!hasFloor && this.onGround && this.y <= 0.01 && this.vy <= 0.01) {
+    if (!hasFloor && this.onGround && !this.isJumping) {
       this.isFalling = true;
+      this.onGround = false;
+      this.vy = -VOID_DROP_SPEED;
     }
 
     if (this.onGround && hasFloor && !this.isFalling) {
@@ -140,11 +262,13 @@ export class Player {
       this.isJumping = false;
     } else {
       this.onGround = false;
-      this.vy -= 24 * dt;
+      const gravity = this.isFalling ? VOID_GRAVITY : GRAVITY;
+      this.vy -= gravity * dt;
       this.y += this.vy * dt;
 
-      if (!hasFloor && this.y <= 0 && this.vy <= 0) {
+      if (!hasFloor && this.y <= 0 && this.vy <= 0 && !this.isFalling) {
         this.isFalling = true;
+        if (this.vy > -VOID_DROP_SPEED) this.vy = -VOID_DROP_SPEED;
       }
 
       if (hasFloor && this.y <= 0 && this.vy <= 0 && !this.isFalling) {
@@ -170,8 +294,11 @@ export class Player {
 
     this.runPhase += dt * (this.isStumbling ? 4 : 12);
     const bob = Math.sin(this.runPhase) * (this.isStumbling ? 0.02 : 0.08);
-    this.body.position.y = 1.05 + bob + (this.isStumbling ? -0.15 : 0);
-    this.head.position.y = 1.75 + bob + (this.isStumbling ? -0.15 : 0);
+    const fallTuck = this.isFalling ? Math.min(0.55, Math.max(0, -this.y * 0.25)) : 0;
+    const bodyY = 1.05 + bob + (this.isStumbling ? -0.15 : 0) - fallTuck;
+    const headY = 1.75 + bob + (this.isStumbling ? -0.15 : 0) - fallTuck * 1.1;
+    this.body.position.y = bodyY;
+    this.head.position.y = headY;
     this.body.position.x = this.wallBounceSide * wallPush * 0.12;
     this.head.position.x = this.wallBounceSide * wallPush * 0.08;
 
@@ -181,12 +308,21 @@ export class Player {
         this.stumbleSide !== 0
           ? this.stumbleSide * 0.28 + wobble
           : wobble + Math.sin(this.runPhase * 2) * 0.05;
+    } else if (this.isFalling) {
+      this.body.rotation.z *= 0.85;
+      this.body.rotation.x = Math.min(0.55, this.body.rotation.x + dt * 3);
+      this.head.rotation.x = this.body.rotation.x * 0.6;
+      this.body.position.x *= 0.85;
+      this.head.position.x *= 0.85;
     } else {
       this.body.rotation.z *= 0.85;
+      this.body.rotation.x *= 0.88;
+      this.head.rotation.x *= 0.88;
       this.body.position.x *= 0.85;
       this.head.position.x *= 0.85;
     }
 
     this.group.position.set(this.x, this.y, 0);
+    this.updateTrails(dt);
   }
 }
