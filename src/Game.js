@@ -99,7 +99,7 @@ export class Game {
   }
 
   getPlayerName() {
-    return this.ui.playerNameInput?.value.trim() ?? '';
+    return (this.ui.playerNameInput?.value ?? '').trim();
   }
 
   loadPlayerName() {
@@ -126,18 +126,25 @@ export class Game {
   }
 
   async refreshLeaderboard() {
+    if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard');
     const scores = await fetchTopScores();
     const list = this.ui.leaderboardList;
-    if (!list) return;
+    if (!list) {
+      if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — #leaderboard-list missing');
+      return;
+    }
 
     list.innerHTML = '';
     this.ui.leaderboardEmpty?.classList.add('hidden');
     this.ui.leaderboardError?.classList.add('hidden');
 
     if (scores.length === 0) {
+      if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — empty list');
       this.ui.leaderboardEmpty?.classList.remove('hidden');
       return;
     }
+
+    if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — rows', scores.length);
 
     for (const row of scores) {
       const item = document.createElement('li');
@@ -448,9 +455,17 @@ export class Game {
   }
 
   async submitScoreToLeaderboard() {
+    const name = this.getPlayerName();
     const distance = Math.floor(this.distance);
-    if (distance < 1) return;
-    const ok = await submitScore(this.getPlayerName(), distance);
+    if (import.meta.env.DEV) {
+      console.log('[leaderboard] submitScoreToLeaderboard', { name, distance });
+    }
+    if (distance < 1) {
+      if (import.meta.env.DEV) console.log('[leaderboard] skip submit — distance < 1');
+      return;
+    }
+    const ok = await submitScore(name, distance);
+    if (import.meta.env.DEV) console.log('[leaderboard] submit result', { ok });
     if (ok) this.refreshLeaderboard();
   }
 

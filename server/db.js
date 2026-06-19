@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { lbLog } from './debug.js';
 import { sanitizePlayerName, validateDistance } from './validate.js';
 
 const { Pool } = pg;
@@ -42,8 +43,10 @@ export async function fetchTopScores(limit = 10) {
 export async function insertScore(name, distance) {
   const playerName = sanitizePlayerName(name);
   const scoreDistance = validateDistance(distance);
+  lbLog('insertScore validate', { rawName: name, rawDistance: distance, playerName, scoreDistance });
   if (!playerName || scoreDistance === null) {
-    return { ok: false, status: 400, error: 'invalid_payload' };
+    const detail = !playerName ? 'invalid_name' : 'invalid_distance';
+    return { ok: false, status: 400, error: 'invalid_payload', detail };
   }
 
   const db = getPool();
@@ -56,7 +59,7 @@ export async function insertScore(name, distance) {
     [playerName, scoreDistance]
   );
 
-  return { ok: true, status: 201 };
+  return { ok: true, status: 201, playerName, distance: scoreDistance };
 }
 
 export async function closePool() {

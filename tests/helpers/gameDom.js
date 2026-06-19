@@ -28,7 +28,9 @@ export function setupGameDOM() {
   for (const id of GAME_DOM_IDS) {
     if (document.getElementById(id)) continue;
 
-    const el = document.createElement('div');
+    const el = id === 'player-name'
+      ? document.createElement('input')
+      : document.createElement('div');
     el.id = id;
 
     if (id.startsWith('booster-')) {
