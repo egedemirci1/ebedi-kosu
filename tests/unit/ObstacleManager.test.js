@@ -143,14 +143,14 @@ describe('ObstacleManager', () => {
   });
 
   describe('pickType', () => {
-    it('includes gate obstacles after early difficulty threshold', () => {
-      obstacles.difficulty = 0.2;
+    it('includes gate obstacles after the 1k tier', () => {
+      obstacles.difficulty = 0.22;
       const types = new Set();
       for (let i = 0; i < 80; i++) types.add(obstacles.pickType());
       expect(types.has('gate')).toBe(true);
     });
 
-    it('avoids gate obstacles in the first meters', () => {
+    it('avoids gate obstacles during tutorial difficulty', () => {
       obstacles.difficulty = 0.05;
       for (let i = 0; i < 40; i++) {
         expect(obstacles.pickType()).not.toBe('gate');
@@ -183,12 +183,18 @@ describe('ObstacleManager', () => {
 
   describe('difficulty scaling', () => {
     it('accelerates spawn interval as distance increases', () => {
-      obstacles.update(0, 14, 0);
-      const early = obstacles.spawnInterval;
       obstacles.update(0, 14, 500);
+      const tutorial = obstacles.spawnInterval;
+      obstacles.update(0, 14, 1200);
+      const tierOne = obstacles.spawnInterval;
+      obstacles.update(0, 14, 3500);
+      const mid = obstacles.spawnInterval;
+      obstacles.update(0, 14, 12000);
       const late = obstacles.spawnInterval;
-      expect(late).toBeLessThan(early);
-      expect(late).toBeGreaterThanOrEqual(0.55);
+      expect(tierOne).toBeLessThan(tutorial);
+      expect(mid).toBeLessThan(tierOne);
+      expect(late).toBeLessThan(mid);
+      expect(late).toBeGreaterThanOrEqual(0.48);
     });
   });
 });

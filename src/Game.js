@@ -15,7 +15,7 @@ import { CoinManager } from './CoinManager.js';
 import { DayCycle } from './DayCycle.js';
 import { fetchTopScores, submitScore, startRunSession, isValidPlayerName, buildLeaderboardDisplayRows, formatLeaderboardDistance } from './Leaderboard.js';
 import { applyRendererProfile } from './graphicsProfile.js';
-import { runSpeedAtDistance, DANGER_PER_HIT } from '../shared/runPhysics.js';
+import { runSpeedAtDistance, DANGER_PER_HIT, BASE_RUN_SPEED } from '../shared/runPhysics.js';
 import { StoryManager } from './StoryManager.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
@@ -62,7 +62,7 @@ export class Game {
     this.sessionCoins = 0;
     this.runToken = null;
     this.runActiveMs = 0;
-    this.baseSpeed = 14;
+    this.baseSpeed = BASE_RUN_SPEED;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
     this._needsRender = true;

@@ -1,8 +1,15 @@
 /** Matches Game.js run speed — soft cap with diminishing acceleration. */
-export const BASE_RUN_SPEED = 14;
+export const BASE_RUN_SPEED = 15.5;
+/** Smooth curve ceiling before gear bonuses. */
+export const CORE_MAX_RUN_SPEED = 21;
+/** @deprecated use CORE_MAX_RUN_SPEED + gear bonuses; kept for older references. */
 export const MAX_RUN_SPEED = 26;
-/** Distance scale: larger = slower approach to max speed (mid-run keeps accelerating). */
-export const SPEED_RAMP_DISTANCE = 2400;
+export const OVERDRIVE_MAX_SPEED = 30;
+/** Distance scale for the smooth core curve between gear jumps. */
+export const SPEED_RAMP_DISTANCE = 2200;
+/** After this distance, speed slowly creeps toward OVERDRIVE_MAX. */
+export const OVERDRIVE_START_DISTANCE = 10000;
+export const OVERDRIVE_RAMP_DISTANCE = 12000;
 export const MAX_SPEED_MULTIPLIER = 1.3;
 export const RUN_PHYSICS_TOLERANCE = 1.2;
 
@@ -10,12 +17,47 @@ export const RUN_PHYSICS_TOLERANCE = 1.2;
 export const HITS_TO_CATCH = 2;
 export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
 
-const SPEED_HEADROOM = MAX_RUN_SPEED - BASE_RUN_SPEED;
+/**
+ * Discrete speed jumps — sync with ChaseMusic tiers (1k, 3k) and disco at 5k.
+ * @type {{ distance: number, bonus: number }[]}
+ */
+export const SPEED_GEAR_BONUSES = [
+  { distance: 1000, bonus: 1.5 },
+  { distance: 3000, bonus: 1.5 },
+  { distance: 5000, bonus: 2.0 },
+];
 
-/** Run speed (m/s) at a given distance — growth slows as you approach MAX_RUN_SPEED. */
+const CORE_HEADROOM = CORE_MAX_RUN_SPEED - BASE_RUN_SPEED;
+
+/** @param {number} distanceMeters */
+export function speedGearBonusForDistance(distanceMeters) {
+  const d = Math.floor(Math.max(0, Number(distanceMeters) || 0));
+  let bonus = 0;
+  for (const gear of SPEED_GEAR_BONUSES) {
+    if (d >= gear.distance) bonus += gear.bonus;
+  }
+  return bonus;
+}
+
+/** @param {number} d */
+function coreSpeedAtDistance(d) {
+  return BASE_RUN_SPEED + CORE_HEADROOM * (1 - Math.exp(-d / SPEED_RAMP_DISTANCE));
+}
+
+/** @param {number} d */
+function speedBeforeOverdrive(d) {
+  return coreSpeedAtDistance(d) + speedGearBonusForDistance(d);
+}
+
+/** Run speed (m/s) — smooth core, music-synced gear jumps, late overdrive. */
 export function runSpeedAtDistance(distanceMeters) {
   const d = Math.max(0, Number(distanceMeters) || 0);
-  return BASE_RUN_SPEED + SPEED_HEADROOM * (1 - Math.exp(-d / SPEED_RAMP_DISTANCE));
+  if (d < OVERDRIVE_START_DISTANCE) return speedBeforeOverdrive(d);
+
+  const startSpeed = speedBeforeOverdrive(OVERDRIVE_START_DISTANCE);
+  const t = (d - OVERDRIVE_START_DISTANCE) / OVERDRIVE_RAMP_DISTANCE;
+  const overBlend = 1 - Math.exp(-2.2 * Math.min(t, 3));
+  return startSpeed + (OVERDRIVE_MAX_SPEED - startSpeed) * overBlend;
 }
 
 function integrateDistance(activeMs, speedMultiplier = MAX_SPEED_MULTIPLIER) {

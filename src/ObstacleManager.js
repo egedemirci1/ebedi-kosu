@@ -52,7 +52,35 @@ function playerVerticalBounds(player) {
 }
 
 const SPAWN_LOOKAHEAD = -110;
-const OBSTACLE_DIFFICULTY_DISTANCE = 1100;
+/** Before this distance: tutorial mix only (barrier + low). */
+const OBSTACLE_TUTORIAL_END = 1000;
+/** 1k → 3.2k ramps difficulty from tier I to full. Sync with first speed gear. */
+const OBSTACLE_DIFFICULTY_RAMP = 2200;
+const OBSTACLE_OVERDRIVE_DISTANCE = 10000;
+const OBSTACLE_OVERDRIVE_RAMP = 12000;
+/** Difficulty at the first gear / music tier. */
+const OBSTACLE_TIER_I_DIFFICULTY = 0.22;
+
+/** 0–0.1 tutorial, tier jump at 1k, full ramp by ~3.2k, overdrive after 10k. */
+export function obstacleDifficultyForDistance(distance) {
+  const d = Math.max(0, Number(distance) || 0);
+  let base;
+  if (d < OBSTACLE_TUTORIAL_END) {
+    base = (d / OBSTACLE_TUTORIAL_END) * 0.1;
+  } else {
+    const ramp = Math.min(1, (d - OBSTACLE_TUTORIAL_END) / OBSTACLE_DIFFICULTY_RAMP);
+    base = OBSTACLE_TIER_I_DIFFICULTY + ramp * (1 - OBSTACLE_TIER_I_DIFFICULTY);
+  }
+  if (d < OBSTACLE_OVERDRIVE_DISTANCE) return base;
+  const late = Math.min(
+    0.35,
+    (d - OBSTACLE_OVERDRIVE_DISTANCE) / OBSTACLE_OVERDRIVE_RAMP
+  );
+  return base + late;
+}
+
+/** @deprecated use OBSTACLE_TUTORIAL_END + OBSTACLE_DIFFICULTY_RAMP */
+const OBSTACLE_DIFFICULTY_DISTANCE = OBSTACLE_TUTORIAL_END + OBSTACLE_DIFFICULTY_RAMP;
 const MIN_SPAWN_Z = -130;
 
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -570,10 +598,10 @@ export class ObstacleManager {
     let count = 1;
 
     if (d >= 0.1) {
-      const twoLaneChance = 0.22 + d * 0.58;
+      const twoLaneChance = 0.28 + d * 0.62;
       if (roll < twoLaneChance) {
         count = 2;
-      } else if (d >= 0.45 && roll < twoLaneChance + 0.06 + d * 0.14) {
+      } else if (d >= 0.4 && roll < twoLaneChance + 0.08 + d * 0.16) {
         count = 3;
       }
     }
@@ -602,27 +630,35 @@ export class ObstacleManager {
 
   pickType() {
     const r = Math.random();
+    const d = this.difficulty;
 
-    if (this.difficulty < 0.12) {
+    if (d < 0.1) {
       return r < 0.55 ? 'barrier' : 'low';
     }
 
-    if (this.difficulty < 0.35) {
-      if (r < 0.2) return 'gate';
-      if (r < 0.62) return 'barrier';
+    if (d < 0.3) {
+      if (r < 0.28) return 'gate';
+      if (r < 0.64) return 'barrier';
       return 'low';
     }
 
-    if (this.difficulty < 0.6) {
-      if (r < 0.26) return 'gate';
-      if (r < 0.48) return 'barrier';
+    if (d < 0.55) {
+      if (r < 0.3) return 'gate';
+      if (r < 0.52) return 'barrier';
       if (r < 0.78) return 'low';
       return 'tall';
     }
 
-    if (r < 0.28) return 'gate';
-    if (r < 0.5) return 'barrier';
-    if (r < 0.74) return 'low';
+    if (d >= 1) {
+      if (r < 0.34) return 'gate';
+      if (r < 0.54) return 'tall';
+      if (r < 0.76) return 'barrier';
+      return 'low';
+    }
+
+    if (r < 0.32) return 'gate';
+    if (r < 0.52) return 'barrier';
+    if (r < 0.72) return 'low';
     return 'tall';
   }
 
@@ -674,8 +710,9 @@ export class ObstacleManager {
   }
 
   update(dt, speed, distance) {
-    this.difficulty = Math.min(1, distance / OBSTACLE_DIFFICULTY_DISTANCE);
-    this.spawnInterval = Math.max(0.55, 1.45 - this.difficulty * 0.78);
+    this.difficulty = obstacleDifficultyForDistance(distance);
+    const spawnFloor = this.difficulty >= 1 ? 0.48 : 0.52;
+    this.spawnInterval = Math.max(spawnFloor, 1.35 - this.difficulty * 0.72);
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 || this.getFurthestZ() > SPAWN_LOOKAHEAD) {
@@ -716,4 +753,8 @@ export class ObstacleManager {
   }
 }
 
-export { COLLISION_Z, OBSTACLE_DIFFICULTY_DISTANCE };
+export {
+  COLLISION_Z,
+  OBSTACLE_DIFFICULTY_DISTANCE,
+  OBSTACLE_TUTORIAL_END,
+};
