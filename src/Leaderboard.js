@@ -4,6 +4,20 @@ function lbLog(...args) {
   if (debug) console.log('[leaderboard]', ...args);
 }
 
+export async function startRunSession() {
+  lbLog('startRunSession → POST /api/runs/start');
+  try {
+    const res = await fetch('/api/runs/start', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    lbLog('startRunSession ←', { status: res.status, ok: res.ok, data });
+    if (!res.ok || !data.token) return null;
+    return { token: data.token, expiresAt: data.expiresAt };
+  } catch (err) {
+    lbLog('startRunSession FAILED', err);
+    return null;
+  }
+}
+
 export async function fetchTopScores() {
   lbLog('fetchTopScores → GET /api/scores/top');
   try {
@@ -21,8 +35,8 @@ export async function fetchTopScores() {
   }
 }
 
-export async function submitScore(name, distance) {
-  const payload = { name, distance };
+export async function submitScore(name, distance, runToken, activeMs) {
+  const payload = { name, distance, runToken, activeMs };
   lbLog('submitScore → POST /api/scores', payload);
   try {
     const res = await fetch('/api/scores', {
@@ -39,7 +53,28 @@ export async function submitScore(name, distance) {
   }
 }
 
-export function isValidPlayerName(name) {
-  const trimmed = String(name ?? '').trim();
-  return trimmed.length >= 2 && trimmed.length <= 20;
+export { isValidPlayerName, sanitizePlayerName } from '../shared/validation.js';
+
+export const LEADERBOARD_TOP_N = 10;
+const PLACEHOLDER_NAME = '***';
+
+export function buildLeaderboardDisplayRows(scores, error) {
+  if (error) {
+    return Array.from({ length: LEADERBOARD_TOP_N }, (_, index) => ({
+      rank: index + 1,
+      player_name: PLACEHOLDER_NAME,
+      distance: null,
+      isPlaceholder: true,
+    }));
+  }
+
+  return scores.map((row) => ({
+    ...row,
+    isPlaceholder: false,
+  }));
+}
+
+export function formatLeaderboardDistance(distance) {
+  if (distance == null || Number.isNaN(Number(distance))) return '—';
+  return `${Math.floor(Number(distance))}m`;
 }

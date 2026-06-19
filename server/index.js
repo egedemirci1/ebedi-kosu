@@ -5,15 +5,33 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { closePool, fetchTopScores, insertScore, isDbConfigured, pingDatabase, getDatabaseName } from './db.js';
 import { LB_DEBUG, lbError, lbLog, maskDatabaseUrl } from './debug.js';
+import { createRateLimiter } from './rateLimit.js';
+import { securityHeaders } from './security.js';
+import { createRunToken, isRunSessionConfigured, verifyRunScoreSubmission } from './runSession.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, '..', 'dist');
 const port = Number(process.env.PORT) || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
 
 const app = express();
+app.set('trust proxy', 1);
+app.use(securityHeaders);
 app.use(express.json({ limit: '1kb' }));
+
+const scoreSubmitLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyPrefix: 'scores',
+});
+
+const runStartLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  keyPrefix: 'runs',
+});
 
 app.get('/api/health', async (_req, res) => {
   if (!isDbConfigured()) {
@@ -23,22 +41,45 @@ app.get('/api/health', async (_req, res) => {
 
   try {
     await pingDatabase();
-    res.json({
+    const payload = {
       ok: true,
       database: true,
       connected: true,
-      db_name: getDatabaseName(),
-    });
+    };
+    if (LB_DEBUG) {
+      payload.db_name = getDatabaseName();
+      payload.run_sessions = isRunSessionConfigured();
+    }
+    res.json(payload);
   } catch (err) {
     lbError('GET /api/health DB ping failed:', err.message);
-    res.json({
+    const payload = {
       ok: true,
       database: true,
       connected: false,
-      db_name: getDatabaseName(),
-      error: err.message,
-    });
+    };
+    if (LB_DEBUG) {
+      payload.db_name = getDatabaseName();
+      payload.error = err.message;
+    }
+    res.json(payload);
   }
+});
+
+app.post('/api/runs/start', runStartLimiter, (_req, res) => {
+  const session = createRunToken();
+  if (!session) {
+    lbError('POST /api/runs/start — RUN_SESSION_SECRET missing');
+    res.status(503).json({ ok: false, error: 'run_session_unavailable' });
+    return;
+  }
+
+  lbLog('POST /api/runs/start OK');
+  res.status(201).json({
+    ok: true,
+    token: session.token,
+    expiresAt: session.expiresAt,
+  });
 });
 
 app.get('/api/scores/top', async (_req, res) => {
@@ -63,13 +104,34 @@ app.get('/api/scores/top', async (_req, res) => {
   }
 });
 
-app.post('/api/scores', async (req, res) => {
-  lbLog('POST /api/scores body', req.body);
+app.post('/api/scores', scoreSubmitLimiter, async (req, res) => {
+  lbLog('POST /api/scores body', {
+    name: req.body?.name,
+    distance: req.body?.distance,
+    activeMs: req.body?.activeMs,
+    hasToken: Boolean(req.body?.runToken),
+  });
+
+  const runCheck = verifyRunScoreSubmission(
+    req.body?.runToken,
+    req.body?.distance,
+    req.body?.activeMs
+  );
+  if (!runCheck.ok) {
+    lbError('POST /api/scores rejected by run session', runCheck);
+    res.status(runCheck.status).json({ ok: false, error: runCheck.error });
+    return;
+  }
+
   try {
     const result = await insertScore(req.body?.name, req.body?.distance);
     if (!result.ok) {
       lbError('POST /api/scores rejected', result);
-      res.status(result.status).json({ ok: false, error: result.error, detail: result.detail });
+      res.status(result.status).json({
+        ok: false,
+        error: result.error,
+        ...(LB_DEBUG ? { detail: result.detail } : {}),
+      });
       return;
     }
     lbLog('POST /api/scores saved', { name: result.playerName, distance: result.distance });
@@ -97,8 +159,11 @@ const server = app.listen(port, async () => {
     lbError('DATABASE_URL missing — leaderboard API disabled');
     return;
   }
+  if (isProduction && !isRunSessionConfigured()) {
+    lbError('RUN_SESSION_SECRET missing — score submissions will be rejected');
+  }
   lbLog('DATABASE_URL', maskDatabaseUrl(process.env.DATABASE_URL));
-  lbLog('database name', getDatabaseName());
+  if (LB_DEBUG) lbLog('database name', getDatabaseName());
   try {
     await pingDatabase();
     lbLog('startup DB check OK');

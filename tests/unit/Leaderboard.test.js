@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fetchTopScores, submitScore, isValidPlayerName } from '../../src/Leaderboard.js';
+import { fetchTopScores, submitScore, isValidPlayerName, buildLeaderboardDisplayRows, formatLeaderboardDistance, LEADERBOARD_TOP_N } from '../../src/Leaderboard.js';
 
 describe('Leaderboard client', () => {
   beforeEach(() => {
@@ -16,12 +16,13 @@ describe('Leaderboard client', () => {
   describe('isValidPlayerName', () => {
     it('accepts trimmed names between 2 and 20 characters', () => {
       expect(isValidPlayerName('Ali')).toBe(true);
-      expect(isValidPlayerName('  Player  ')).toBe(true);
+      expect(isValidPlayerName('  Player_1  ')).toBe(true);
     });
 
-    it('rejects empty or too short names', () => {
+    it('rejects empty, too short, or invalid characters', () => {
       expect(isValidPlayerName('')).toBe(false);
       expect(isValidPlayerName('A')).toBe(false);
+      expect(isValidPlayerName('bad<script>')).toBe(false);
     });
   });
 
@@ -62,6 +63,34 @@ describe('Leaderboard client', () => {
     });
   });
 
+  describe('buildLeaderboardDisplayRows', () => {
+    it('returns 10 placeholder rows when fetch failed', () => {
+      const rows = buildLeaderboardDisplayRows([], true);
+      expect(rows).toHaveLength(LEADERBOARD_TOP_N);
+      expect(rows[0]).toMatchObject({ rank: 1, player_name: '***', distance: null, isPlaceholder: true });
+      expect(rows[9].rank).toBe(10);
+    });
+
+    it('passes through real scores when fetch succeeded', () => {
+      const rows = buildLeaderboardDisplayRows(
+        [{ rank: 1, player_name: 'Ali', distance: 120 }],
+        false
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ player_name: 'Ali', distance: 120, isPlaceholder: false });
+    });
+  });
+
+  describe('formatLeaderboardDistance', () => {
+    it('formats numeric distances', () => {
+      expect(formatLeaderboardDistance(120.9)).toBe('120m');
+    });
+
+    it('returns em dash for missing distances', () => {
+      expect(formatLeaderboardDistance(null)).toBe('—');
+    });
+  });
+
   describe('submitScore', () => {
     it('returns true when API accepts score', async () => {
       fetch.mockResolvedValue({
@@ -70,7 +99,7 @@ describe('Leaderboard client', () => {
         json: async () => ({ ok: true }),
       });
 
-      expect(await submitScore('Ali', 250)).toBe(true);
+      expect(await submitScore('Ali', 250, 'token', 30_000)).toBe(true);
       expect(fetch).toHaveBeenCalledWith('/api/scores', expect.objectContaining({ method: 'POST' }));
     });
 
@@ -81,7 +110,7 @@ describe('Leaderboard client', () => {
         json: async () => ({ ok: false }),
       });
 
-      expect(await submitScore('Ali', 0)).toBe(false);
+      expect(await submitScore('Ali', 0, 'token', 0)).toBe(false);
     });
   });
 });

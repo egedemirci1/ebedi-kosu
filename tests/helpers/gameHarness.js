@@ -60,10 +60,12 @@ vi.mock('../../src/Sfx.js', () => ({
 
 vi.mock('../../src/Leaderboard.js', () => ({
   fetchTopScores: vi.fn(async () => ({ scores: [], error: false })),
+  startRunSession: vi.fn(async () => ({ token: 'test-token', expiresAt: Date.now() + 60_000 })),
   submitScore: vi.fn(async () => true),
   isValidPlayerName: (name) => {
     const trimmed = String(name ?? '').trim();
-    return trimmed.length >= 2 && trimmed.length <= 20;
+    if (trimmed.length < 2 || trimmed.length > 20) return false;
+    return /^[\p{L}\p{N}_\-. ]+$/u.test(trimmed);
   },
 }));
 

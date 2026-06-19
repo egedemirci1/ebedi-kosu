@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { TRACK_WIDTH, RECYCLE_AFTER_Z, FLOOR_THICKNESS, WALL_X, WALL_TILE_WIDTH } from './Track.js';
+import { LANES, LANE_WIDTH } from './scene.js';
+
+const FLOOR_Y = -FLOOR_THICKNESS / 2;
+const GAP_TYPE_FULL = 'full';
+const GAP_TYPE_BRIDGE = 'bridge';
+const BRIDGE_SPAWN_CHANCE = 0.28;
+const MIN_BRIDGE_GAP_WIDTH = 5.2;
+const MAX_BRIDGE_GAP_WIDTH = 7.8;
 
 const GAP_START_DISTANCE = 80;
 const MIN_GAP_WIDTH = 2.4;
@@ -79,6 +87,26 @@ export class GapManager {
     this.legTopY = 0;
     this.legCenterY = -legSpan / 2;
     this.wallLegGeo = new THREE.BoxGeometry(WALL_TILE_WIDTH, legSpan, WALL_LEG_DEPTH);
+
+    this.bridgeDeckMat = new THREE.MeshStandardMaterial({
+      color: 0x5a4a78,
+      emissive: 0x2a1840,
+      emissiveIntensity: 0.28,
+      roughness: 0.72,
+      metalness: 0.1,
+      fog: false,
+    });
+    this.bridgeRailMat = new THREE.MeshStandardMaterial({
+      color: 0x8877aa,
+      emissive: 0x443366,
+      emissiveIntensity: 0.35,
+      roughness: 0.55,
+      metalness: 0.18,
+      fog: false,
+    });
+    this.bridgePlankGeo = new THREE.BoxGeometry(LANE_WIDTH * 0.78, FLOOR_THICKNESS, 0.72);
+    this.bridgeRailGeo = new THREE.BoxGeometry(0.07, 0.42, 1);
+
     this.track = null;
   }
 
@@ -102,6 +130,10 @@ export class GapManager {
     const maxW = getMaxJumpableGapWidth(speed);
     if (maxW <= MIN_GAP_WIDTH) return MIN_GAP_WIDTH;
     return MIN_GAP_WIDTH + Math.random() * (maxW - MIN_GAP_WIDTH);
+  }
+
+  randomBridgeGapWidth() {
+    return MIN_BRIDGE_GAP_WIDTH + Math.random() * (MAX_BRIDGE_GAP_WIDTH - MIN_BRIDGE_GAP_WIDTH);
   }
 
   /** Solid floor run between gap edges (not center-to-center). */
@@ -185,7 +217,46 @@ export class GapManager {
     }
   }
 
-  buildGapGroup(width, gapZ = 0) {
+  addBridgeDeck(group, width, bridgeLane) {
+    const laneX = LANES[bridgeLane];
+    const plankCount = Math.max(4, Math.ceil(width / 0.85));
+    const step = width / plankCount;
+    const halfRail = LANE_WIDTH * 0.42;
+
+    for (let i = 0; i < plankCount; i++) {
+      const plank = new THREE.Mesh(this.bridgePlankGeo, this.bridgeDeckMat);
+      plank.position.set(laneX, FLOOR_Y, -width / 2 + (i + 0.5) * step);
+      group.add(plank);
+    }
+
+    const railSpan = width - 0.2;
+    const railCount = Math.max(2, Math.ceil(railSpan / 0.95));
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < railCount; i++) {
+        const rail = new THREE.Mesh(this.bridgeRailGeo, this.bridgeRailMat);
+        rail.scale.z = railSpan / railCount * 0.92;
+        rail.position.set(
+          laneX + side * halfRail,
+          FLOOR_Y + 0.28,
+          -width / 2 + (i + 0.5) * (width / railCount)
+        );
+        group.add(rail);
+      }
+    }
+
+    for (const z of [-width / 2 + 0.15, width / 2 - 0.15]) {
+      for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 0.55, 0.1),
+          this.bridgeRailMat
+        );
+        post.position.set(laneX + side * halfRail, FLOOR_Y + 0.22, z);
+        group.add(post);
+      }
+    }
+  }
+
+  buildGapGroup(width, gapZ = 0, type = GAP_TYPE_FULL, bridgeLane = 1) {
     const group = new THREE.Group();
     const embers = [];
     const { backEdge, frontEdge } = this.resolveCliffEdges(gapZ, width);
@@ -196,6 +267,10 @@ export class GapManager {
     this.addFloorCornerLegs(group, backLocal, frontLocal);
     this.addWallGapLegs(group, backLocal, frontLocal);
 
+    if (type === GAP_TYPE_BRIDGE) {
+      this.addBridgeDeck(group, width, bridgeLane);
+    }
+
     return { group, embers };
   }
 
@@ -205,11 +280,13 @@ export class GapManager {
     }
   }
 
-  repoolGapEntry(entry, z, width) {
+  repoolGapEntry(entry, z, width, type = GAP_TYPE_FULL, bridgeLane = 1) {
     this.discardGroup(entry.group);
-    const built = this.buildGapGroup(width, z);
+    const built = this.buildGapGroup(width, z, type, bridgeLane);
     entry.group = built.group;
     entry.embers = built.embers;
+    entry.type = type;
+    entry.bridgeLane = bridgeLane;
     this.setGapBounds(entry, z, width);
     entry.active = true;
     this.scene.add(entry.group);
@@ -234,6 +311,18 @@ export class GapManager {
       if (worldZ >= gap.startZ && worldZ <= gap.endZ) return true;
     }
     return false;
+  }
+
+  /** True when the player lane has solid floor at worldZ (bridge lane counts as floor). */
+  hasFloorAt(worldZ, laneIndex) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      if (worldZ < gap.startZ || worldZ > gap.endZ) continue;
+      if (gap.type === GAP_TYPE_BRIDGE && laneIndex === gap.bridgeLane) return true;
+      return false;
+    }
+    return true;
   }
 
   isGapNear(worldZ, margin = GAP_MARGIN) {
@@ -270,14 +359,16 @@ export class GapManager {
     return this.coversFloorAt(segZ);
   }
 
-  acquireGap(z, width = this.randomGapWidth()) {
+  acquireGap(z, width = this.randomGapWidth(), options = {}) {
+    const type = options.type ?? GAP_TYPE_FULL;
+    const bridgeLane = options.bridgeLane ?? Math.floor(Math.random() * 3);
     let entry;
 
     if (this.gapPool.length > 0) {
       entry = this.gapPool.pop();
-      this.repoolGapEntry(entry, z, width);
+      this.repoolGapEntry(entry, z, width, type, bridgeLane);
     } else {
-      const built = this.buildGapGroup(width, z);
+      const built = this.buildGapGroup(width, z, type, bridgeLane);
       entry = {
         group: built.group,
         embers: built.embers,
@@ -285,6 +376,8 @@ export class GapManager {
         z,
         startZ: z - width / 2,
         endZ: z + width / 2,
+        type,
+        bridgeLane,
         active: true,
       };
       this.setGapBounds(entry, z, width);
@@ -308,7 +401,14 @@ export class GapManager {
   }
 
   spawnGap(z, width) {
-    this.acquireGap(z, width);
+    this.acquireGap(z, width, { type: GAP_TYPE_FULL });
+  }
+
+  spawnBridgeGap(z, width) {
+    this.acquireGap(z, width, {
+      type: GAP_TYPE_BRIDGE,
+      bridgeLane: Math.floor(Math.random() * 3),
+    });
   }
 
   canSpawnAt(z, width) {
@@ -321,9 +421,14 @@ export class GapManager {
 
   trySpawnNext() {
     for (let attempt = 0; attempt < 12; attempt++) {
-      const width = this.randomGapWidth();
+      const useBridge = Math.random() < BRIDGE_SPAWN_CHANCE;
+      const width = useBridge ? this.randomBridgeGapWidth() : this.randomGapWidth();
       if (this.canSpawnAt(this.nextGapZ, width)) {
-        this.spawnGap(this.nextGapZ, width);
+        if (useBridge) {
+          this.spawnBridgeGap(this.nextGapZ, width);
+        } else {
+          this.spawnGap(this.nextGapZ, width);
+        }
         this.nextGapZ -= randomGapInterval();
         return true;
       }
@@ -414,4 +519,9 @@ export {
   MIN_FLOOR_BETWEEN_GAPS,
   MIN_GAP_WIDTH,
   ABS_MAX_GAP_WIDTH,
+  GAP_TYPE_FULL,
+  GAP_TYPE_BRIDGE,
+  BRIDGE_SPAWN_CHANCE,
+  MIN_BRIDGE_GAP_WIDTH,
+  MAX_BRIDGE_GAP_WIDTH,
 };

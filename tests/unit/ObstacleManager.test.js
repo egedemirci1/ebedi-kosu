@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ObstacleManager } from '../../src/ObstacleManager.js';
+import { ObstacleManager, obstacleSweepHitsPlayer, COLLISION_Z } from '../../src/ObstacleManager.js';
 import { LANES } from '../../src/scene.js';
 import { createScene, insertGap, insertObstacle } from '../helpers/fixtures.js';
 import { GapManager } from '../../src/GapManager.js';
@@ -13,6 +13,12 @@ function makePlayer({ x = LANES[1], y = 0, laneIndex = 1, isSliding = false, sli
     slideBlend,
     get isSlideActive() {
       return isSliding || slideBlend > 0.45;
+    },
+    get hitbox() {
+      if (isSliding || slideBlend > 0.35) {
+        return { x, y: y + 0.35, z: 0, radius: 0.42, height: 0.62 };
+      }
+      return { x, y: y + 0.9, z: 0, radius: 0.45, height: 1.6 };
     },
   };
 }
@@ -87,6 +93,34 @@ describe('ObstacleManager', () => {
     it('passes under overhead obstacles while slide animation is active', () => {
       insertObstacle(obstacles, 'overhead', 1, 0);
       expect(obstacles.checkCollision(makePlayer({ isSliding: false, slideBlend: 0.6 }))).toBeNull();
+    });
+
+    it('hits low spikes while sliding on the ground', () => {
+      insertObstacle(obstacles, 'low', 1, 0);
+      expect(obstacles.checkCollision(makePlayer({ isSliding: true, slideBlend: 1 }))).not.toBeNull();
+    });
+
+    it('detects collision when high speed skips the point z window in one frame', () => {
+      insertObstacle(obstacles, 'barrier', 1, 0.92);
+      const player = makePlayer({ isSliding: true, slideBlend: 1 });
+      expect(obstacles.checkCollision(player)).toBeNull();
+      expect(obstacles.checkCollision(player, 0.55)).not.toBeNull();
+    });
+
+    it('detects collision when a fast frame jumps across the entire z window', () => {
+      insertObstacle(obstacles, 'low', 1, 1.05);
+      const player = makePlayer({ isSliding: true, slideBlend: 1 });
+      expect(obstacles.checkCollision(player, 1.55)).not.toBeNull();
+    });
+  });
+
+  describe('obstacleSweepHitsPlayer', () => {
+    it('returns true when the frame span crosses z=0 inside the window', () => {
+      expect(obstacleSweepHitsPlayer(0.4, 0.92, COLLISION_Z)).toBe(true);
+    });
+
+    it('returns false when the span stays past the forward edge', () => {
+      expect(obstacleSweepHitsPlayer(0.48, 1.02, COLLISION_Z)).toBe(false);
     });
   });
 

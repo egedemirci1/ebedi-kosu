@@ -17,6 +17,8 @@ const SLIDE_HEAD_Y = 0.58;
 const SLIDE_BODY_ROT_X = 1.35;
 const TRAIL_COUNT = 3;
 const TRAIL_SPACING = 0.35;
+const TRAIL_STAND_Y = 0.32;
+const TRAIL_SLIDE_Y = 0.14;
 
 export class Player {
   constructor(scene) {
@@ -76,6 +78,7 @@ export class Player {
       })
     );
     glow.position.y = 1.2;
+    glow.visible = false;
     this.group.add(glow);
 
     this.body = body;
@@ -87,7 +90,7 @@ export class Player {
     this.trails = [];
     for (let i = 0; i < TRAIL_COUNT; i++) {
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.28 - i * 0.05, 6, 6),
+        new THREE.SphereGeometry(0.24 - i * 0.04, 6, 6),
         new THREE.MeshBasicMaterial({
           color: 0x44ccff,
           transparent: true,
@@ -102,7 +105,7 @@ export class Player {
         life: 0,
         maxLife: 0.28 + i * 0.06,
         x: this.x,
-        y: 0.8,
+        y: TRAIL_STAND_Y,
         z: (i + 1) * TRAIL_SPACING,
       });
     }
@@ -178,8 +181,22 @@ export class Player {
       this.bodyMat.transparent = false;
       this.headMat.transparent = false;
       this.glow.material.color.setHex(0x44ccff);
-      this.glow.material.opacity = 0.45;
+      this.glow.material.opacity = 0.65;
     }
+    this.syncGlowVisibility();
+  }
+
+  syncGlowVisibility() {
+    this.glow.visible =
+      this.isGhostVisual &&
+      !this.isStumbling &&
+      this.wallBounceTimer <= 0 &&
+      this.slideBlend < 0.92;
+  }
+
+  trailFeetY(slideBlend = 0) {
+    const base = THREE.MathUtils.lerp(TRAIL_STAND_Y, TRAIL_SLIDE_Y, slideBlend);
+    return this.y + base + Math.sin(this.runPhase) * 0.05;
   }
 
   stumble(duration = 0.6, side = 0) {
@@ -188,6 +205,8 @@ export class Player {
     this.isStumbling = true;
     this.stumbleTimer = duration;
     this.stumbleSide = side;
+    this.resetTrails();
+    this.glow.visible = false;
 
     if (side !== 0) {
       this.wallBounceTimer = WALL_BUMP_DURATION;
@@ -210,7 +229,7 @@ export class Player {
     this.glow.position.y = 1.2;
     this.glow.position.z = 0;
     this.glow.scale.set(1, 1, 1);
-    this.glow.visible = true;
+    this.glow.visible = false;
     this.isSliding = false;
     this.slideTimer = 0;
     this.slideBlend = 0;
@@ -230,6 +249,15 @@ export class Player {
   updateTrails(dt) {
     const running = this.onGround && !this.isFalling && !this.isStumbling && !this.isSliding;
 
+    if (this.isStumbling || this.wallBounceTimer > 0) {
+      for (const trail of this.trails) {
+        trail.life = 0;
+        trail.mesh.material.opacity = 0;
+        trail.mesh.visible = false;
+      }
+      return;
+    }
+
     if (running) {
       this.trailSpawnTimer += dt;
       if (this.trailSpawnTimer >= 0.045) {
@@ -241,7 +269,7 @@ export class Player {
         const trail = this.trails[slot];
         trail.life = trail.maxLife;
         trail.x = this.x;
-        trail.y = this.y + 0.75 + Math.sin(this.runPhase) * 0.06;
+        trail.y = this.trailFeetY(this.slideBlend);
         trail.z = TRAIL_SPACING * 0.5;
         trail.mesh.visible = true;
       }
@@ -259,7 +287,8 @@ export class Player {
       const t = Math.max(0, trail.life / trail.maxLife);
       trail.mesh.position.set(trail.x, trail.y, trail.z);
       trail.mesh.material.opacity = t * 0.38;
-      trail.mesh.scale.setScalar(0.55 + t * 0.45);
+      const puff = 0.55 + t * 0.45;
+      trail.mesh.scale.set(puff, puff * 0.52, puff);
 
       if (trail.life <= 0) {
         trail.mesh.visible = false;
@@ -401,12 +430,13 @@ export class Player {
       THREE.MathUtils.lerp(1, 1.18, s)
     );
 
-    const baseGlowOpacity = this.isGhostVisual ? 0.65 : 0.45;
-    this.glow.position.y = THREE.MathUtils.lerp(1.2, bodyY + 0.08, s);
-    this.glow.position.z = THREE.MathUtils.lerp(0, 0.12, s);
-    this.glow.scale.setScalar(THREE.MathUtils.lerp(1, 0.4, s));
-    this.glow.material.opacity = baseGlowOpacity * (1 - s);
-    this.glow.visible = s < 0.92;
+    if (this.isGhostVisual) {
+      this.glow.position.y = THREE.MathUtils.lerp(1.2, bodyY + 0.08, s);
+      this.glow.position.z = THREE.MathUtils.lerp(0, 0.12, s);
+      this.glow.scale.setScalar(THREE.MathUtils.lerp(1, 0.4, s));
+      this.glow.material.opacity = 0.65 * (1 - s);
+    }
+    this.syncGlowVisibility();
 
     if (this.isStumbling) {
       const wobble = Math.sin(this.runPhase * 2) * 0.1;

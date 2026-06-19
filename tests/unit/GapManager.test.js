@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { GapManager, GAP_MARGIN, getMaxJumpableGapWidth, MIN_GAP_WIDTH, ABS_MAX_GAP_WIDTH } from '../../src/GapManager.js';
-import { createScene, insertGap } from '../helpers/fixtures.js';
+import {
+  GapManager,
+  GAP_MARGIN,
+  getMaxJumpableGapWidth,
+  MIN_GAP_WIDTH,
+  ABS_MAX_GAP_WIDTH,
+  GAP_TYPE_BRIDGE,
+  MIN_BRIDGE_GAP_WIDTH,
+  MAX_BRIDGE_GAP_WIDTH,
+} from '../../src/GapManager.js';
+import { createScene, insertGap, insertBridgeGap } from '../helpers/fixtures.js';
 
 describe('GapManager', () => {
   let scene;
@@ -147,6 +156,36 @@ describe('GapManager', () => {
       const gap = gaps.gaps[0];
       expect(gap.startZ).toBe(-91.5);
       expect(gap.endZ).toBe(-88.5);
+    });
+  });
+
+  describe('bridge gaps', () => {
+    it('marks only the bridge lane as having floor inside the gap span', () => {
+      insertBridgeGap(gaps, -100, 6, 0);
+      expect(gaps.isGapAt(-100)).toBe(true);
+      expect(gaps.hasFloorAt(-100, 0)).toBe(true);
+      expect(gaps.hasFloorAt(-100, 1)).toBe(false);
+      expect(gaps.hasFloorAt(-100, 2)).toBe(false);
+    });
+
+    it('returns floor outside bridge gap span for every lane', () => {
+      insertBridgeGap(gaps, -100, 6, 2);
+      expect(gaps.hasFloorAt(-50, 0)).toBe(true);
+      expect(gaps.hasFloorAt(-50, 2)).toBe(true);
+    });
+
+    it('stores bridge metadata on spawned entries', () => {
+      const entry = insertBridgeGap(gaps, -80, 6, 1);
+      expect(entry.type).toBe(GAP_TYPE_BRIDGE);
+      expect(entry.bridgeLane).toBe(1);
+    });
+
+    it('uses wider widths than normal jump gaps', () => {
+      for (let i = 0; i < 15; i++) {
+        const w = gaps.randomBridgeGapWidth();
+        expect(w).toBeGreaterThanOrEqual(MIN_BRIDGE_GAP_WIDTH);
+        expect(w).toBeLessThanOrEqual(MAX_BRIDGE_GAP_WIDTH + 0.001);
+      }
     });
   });
 });

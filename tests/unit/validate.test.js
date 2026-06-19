@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizePlayerName, validateDistance } from '../../server/validate.js';
+import { sanitizePlayerName, isValidPlayerName, validateDistance } from '../../server/validate.js';
 
 describe('sanitizePlayerName', () => {
   it('accepts valid names', () => {
@@ -16,6 +16,13 @@ describe('sanitizePlayerName', () => {
   it('rejects invalid characters', () => {
     expect(sanitizePlayerName('bad<script>')).toBeNull();
     expect(sanitizePlayerName('name@mail')).toBeNull();
+  });
+});
+
+describe('isValidPlayerName', () => {
+  it('matches sanitizePlayerName rules', () => {
+    expect(isValidPlayerName('Ali')).toBe(true);
+    expect(isValidPlayerName('bad<script>')).toBe(false);
   });
 });
 

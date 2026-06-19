@@ -13,7 +13,7 @@ import { BoosterEffects } from './BoosterEffects.js';
 import { BoosterShop, SHOP_BOOSTER_TYPES } from './BoosterShop.js';
 import { CoinManager } from './CoinManager.js';
 import { DayCycle } from './DayCycle.js';
-import { fetchTopScores, submitScore, isValidPlayerName } from './Leaderboard.js';
+import { fetchTopScores, submitScore, startRunSession, isValidPlayerName, buildLeaderboardDisplayRows, formatLeaderboardDistance } from './Leaderboard.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
 const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
@@ -56,6 +56,8 @@ export class Game {
     this.distance = 0;
     this.musicTier = 0;
     this.sessionCoins = 0;
+    this.runToken = null;
+    this.runActiveMs = 0;
     this.baseSpeed = 14;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
@@ -257,9 +259,14 @@ export class Game {
     list.innerHTML = '';
     this.ui.leaderboardEmpty?.classList.add('hidden');
     this.ui.leaderboardError?.classList.add('hidden');
+    list.classList.toggle('leaderboard-list--placeholder', error);
 
     if (error) {
-      this.ui.leaderboardError?.classList.remove('hidden');
+      const rows = buildLeaderboardDisplayRows(scores, true);
+      if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — placeholder rows', rows.length);
+      for (const row of rows) {
+        list.appendChild(this.createLeaderboardRow(row));
+      }
       return;
     }
 
@@ -271,25 +278,34 @@ export class Game {
 
     if (import.meta.env.DEV) console.log('[leaderboard] refreshLeaderboard — rows', scores.length);
 
-    for (const row of scores) {
-      const item = document.createElement('li');
-      const rank = document.createElement('span');
-      rank.className = 'rank';
-      if (row.rank <= 3) {
-        rank.classList.add('rank-medal', `rank-medal-${row.rank}`);
-        rank.textContent = String(row.rank);
-      } else {
-        rank.textContent = `${row.rank}.`;
-      }
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = row.player_name;
-      const dist = document.createElement('span');
-      dist.className = 'dist';
-      dist.textContent = `${row.distance}m`;
-      item.append(rank, name, dist);
-      list.appendChild(item);
+    for (const row of buildLeaderboardDisplayRows(scores, false)) {
+      list.appendChild(this.createLeaderboardRow(row));
     }
+  }
+
+  createLeaderboardRow(row) {
+    const item = document.createElement('li');
+    if (row.isPlaceholder) item.classList.add('leaderboard-placeholder');
+
+    const rank = document.createElement('span');
+    rank.className = 'rank';
+    if (row.rank <= 3 && !row.isPlaceholder) {
+      rank.classList.add('rank-medal', `rank-medal-${row.rank}`);
+      rank.textContent = String(row.rank);
+    } else {
+      rank.textContent = `${row.rank}.`;
+    }
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = row.player_name;
+
+    const dist = document.createElement('span');
+    dist.className = 'dist';
+    dist.textContent = formatLeaderboardDistance(row.distance);
+
+    item.append(rank, name, dist);
+    return item;
   }
 
   loadAudioPref(key, defaultValue) {
@@ -344,7 +360,7 @@ export class Game {
 
   updateBestScoreUI() {
     const best = this.getBestScore();
-    const text = best > 0 ? `En iyi: ${best}m` : '';
+    const text = best > 0 ? `Rekorun: ${best}m` : '';
     if (this.ui.bestScore) this.ui.bestScore.textContent = text;
   }
 
@@ -649,6 +665,8 @@ export class Game {
     this.musicTier = 0;
     this.music.setTier(0);
     this._fallScreamPlayed = false;
+    this.runToken = null;
+    this.runActiveMs = 0;
     this.sessionCoins = 0;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
@@ -671,13 +689,18 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
-  start() {
+  async start() {
     if (!this.validatePlayerName()) {
       this.ui.playerNameInput?.focus();
       return;
     }
     this.savePlayerName(this.getPlayerName());
     this.closeShop();
+
+    this.runToken = null;
+    this.runActiveMs = 0;
+    const session = await startRunSession();
+    if (session?.token) this.runToken = session.token;
 
     this.music.start();
     this.state = 'playing';
@@ -737,7 +760,17 @@ export class Game {
       if (import.meta.env.DEV) console.log('[leaderboard] skip submit — distance < 1');
       return;
     }
-    const ok = await submitScore(name, distance);
+    if (!this.runToken) {
+      if (import.meta.env.DEV) console.log('[leaderboard] skip submit — missing run token');
+      return;
+    }
+    const ok = await submitScore(
+      name,
+      distance,
+      this.runToken,
+      Math.floor(this.runActiveMs)
+    );
+    this.runToken = null;
     if (import.meta.env.DEV) console.log('[leaderboard] submit result', { ok });
     if (ok) this.refreshLeaderboard();
   }
@@ -777,6 +810,7 @@ export class Game {
   update(dt) {
     if (this.state === 'playing') {
       dt = Math.min(dt, 0.05);
+      this.runActiveMs += dt * 1000;
 
       this.speed = this.baseSpeed + this.distance * 0.008;
       this.boosters.update(dt);
@@ -791,7 +825,7 @@ export class Game {
       this.pickups.update(dt, runSpeed);
       this.coins.update(dt, runSpeed);
       const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
-      this.player.update(dt, !this.gaps.isGapAt(0), wantsDown);
+      this.player.update(dt, this.gaps.hasFloorAt(0, this.player.laneIndex), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
 
       if (this.player.isFalling && !this._fallScreamPlayed) {
@@ -807,7 +841,7 @@ export class Game {
         return;
       }
 
-      const hit = this.obstacles.checkCollision(this.player);
+      const hit = this.obstacles.checkCollision(this.player, runSpeed * dt);
       if (hit && !this.boosters.isGhostActive()) {
         this.applyHit(0);
         this.obstacles.removeObstacle(hit);

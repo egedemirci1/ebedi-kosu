@@ -1,6 +1,4 @@
-export const LB_DEBUG =
-  process.env.DEBUG_LEADERBOARD === '1' ||
-  process.env.NODE_ENV !== 'production';
+export const LB_DEBUG = process.env.DEBUG_LEADERBOARD === '1';
 
 export function lbLog(...args) {
   if (LB_DEBUG) console.log('[leaderboard]', ...args);

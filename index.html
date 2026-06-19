@@ -12,27 +12,29 @@
       <div id="jump-fx" class="jump-fx hidden" aria-hidden="true"></div>
       <div id="ghost-fx" class="ghost-fx hidden" aria-hidden="true"></div>
       <div id="hud">
-        <div class="hud-left">
-          <div class="hud-item">
-            <span class="label">Mesafe</span>
-            <span id="score">0</span>m
+        <div class="hud-top">
+          <div class="hud-left">
+            <div class="hud-item hud-distance">
+              <span class="label">Mesafe</span>
+              <span class="hud-value"><span id="score">0</span>m</span>
+            </div>
+            <div class="hud-item danger">
+              <span class="label">Tehlike</span>
+              <div id="danger-bar"><div id="danger-fill"></div></div>
+            </div>
           </div>
-          <div class="hud-item danger">
-            <span class="label">Tehlike</span>
-            <div id="danger-bar"><div id="danger-fill"></div></div>
-          </div>
-          <div id="booster-hud" class="booster-hud">
-            <div id="booster-ghost" class="booster-chip ghost">Hayalet <span class="booster-time"></span></div>
-            <div id="booster-jump" class="booster-chip jump">Süper zıpla <span class="booster-time"></span></div>
-            <div id="booster-speed" class="booster-chip speed">Hız <span class="booster-time"></span></div>
+          <div class="hud-right">
+            <div class="hud-item coins hud-coin-chip">
+              <span class="label">Altın</span>
+              <span id="coin-count">0</span>
+            </div>
+            <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
           </div>
         </div>
-        <div class="hud-right">
-          <div class="hud-item coins hud-coin-chip">
-            <span class="label">Altın</span>
-            <span id="coin-count">0</span>
-          </div>
-          <button id="pause-hud-btn" class="hud-pause-btn" title="Duraklat">⏸</button>
+        <div id="booster-hud" class="booster-hud">
+          <div id="booster-ghost" class="booster-chip ghost">Hayalet <span class="booster-time"></span></div>
+          <div id="booster-jump" class="booster-chip jump">Süper zıpla <span class="booster-time"></span></div>
+          <div id="booster-speed" class="booster-chip speed">Hız <span class="booster-time"></span></div>
         </div>
       </div>
 
@@ -41,15 +43,8 @@
           <span class="shop-open-icon">◎</span>
           Mağaza
         </button>
-        <aside id="leaderboard-panel" class="leaderboard-panel">
-          <h2 class="leaderboard-title">En İyiler</h2>
-          <ol id="leaderboard-list" class="leaderboard-list"></ol>
-          <p id="leaderboard-empty" class="leaderboard-msg hidden">Henüz skor yok</p>
-          <p id="leaderboard-error" class="leaderboard-msg leaderboard-error hidden">Liste yüklenemedi</p>
-        </aside>
         <h1>EBEDİ KOŞU</h1>
         <p class="subtitle">Geçmişin seni kovalıyor. Koş ve geçmişinden kaç.</p>
-        <p id="best-score" class="best-score"></p>
         <div class="player-name-field">
           <label for="player-name">Adın</label>
           <input
@@ -60,28 +55,41 @@
             placeholder="2–20 karakter"
             required
           />
-          <p id="player-name-error" class="player-name-error hidden">Geçerli bir ad gir (2–20 karakter)</p>
+          <p id="player-name-error" class="player-name-error hidden">Geçerli bir ad gir (2–20 karakter, harf/rakam)</p>
         </div>
         <div class="controls-info">
           <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
           <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
           <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in / yerde kay (alt bariyerlerden geç)</div>
-          <div>Parlayan güçlendiricileri topla — hayalet, süper zıpla, hız</div>
-          <div>Altın topla — koşu boyunca birikir</div>
-          <div><kbd>Esc</kbd> — Duraklat</div>
-          <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
+          <div class="mobile-controls">
+            <div class="mobile-controls-title">Oynanış</div>
+            <ul class="mobile-hint-list">
+              <li><span class="mobile-hint-action">Sol/Sağ Kaydırma:</span> Şerit Değiştirir</li>
+              <li><span class="mobile-hint-action">Yukarı Kaydırma:</span> Zıplama</li>
+              <li><span class="mobile-hint-action">Aşağı Kaydırma:</span> Eğilme</li>
+            </ul>
+          </div>
         </div>
-        <div class="audio-toggles">
-          <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
-            <span class="audio-toggle-label">Müzik</span>
-            <span class="audio-toggle-state">Açık</span>
-          </button>
-          <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
-            <span class="audio-toggle-label">SFX</span>
-            <span class="audio-toggle-state">Açık</span>
-          </button>
+        <div class="start-screen-top-right">
+          <div class="audio-toggles start-audio-toggles">
+            <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
+              <span class="audio-toggle-label">Müzik</span>
+              <span class="audio-toggle-state">Açık</span>
+            </button>
+            <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
+              <span class="audio-toggle-label">SFX</span>
+              <span class="audio-toggle-state">Açık</span>
+            </button>
+          </div>
+          <aside id="leaderboard-panel" class="leaderboard-panel">
+            <h2 class="leaderboard-title">En İyiler</h2>
+            <ol id="leaderboard-list" class="leaderboard-list"></ol>
+            <p id="leaderboard-empty" class="leaderboard-msg hidden">Henüz skor yok</p>
+            <p id="leaderboard-error" class="leaderboard-msg leaderboard-error hidden">Liste yüklenemedi</p>
+          </aside>
         </div>
         <button id="start-btn">KOŞ!</button>
+        <p id="best-score" class="best-score"></p>
 
         <div id="shop-modal" class="shop-modal hidden" role="dialog" aria-labelledby="shop-title" aria-modal="true">
           <button id="shop-backdrop" class="shop-backdrop" type="button" aria-label="Mağazayı kapat"></button>
@@ -137,22 +145,24 @@
       </div>
 
       <div id="pause-screen" class="overlay hidden">
-        <h1 class="pause-title">DURAKLATILDI</h1>
-        <div class="audio-toggles">
-          <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
-            <span class="audio-toggle-label">Müzik</span>
-            <span class="audio-toggle-state">Açık</span>
-          </button>
-          <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
-            <span class="audio-toggle-label">SFX</span>
-            <span class="audio-toggle-state">Açık</span>
-          </button>
+        <p class="pause-hint"><kbd>Esc</kbd> — Devam et</p>
+        <div class="pause-screen-top-right">
+          <div class="audio-toggles pause-audio-toggles">
+            <button class="audio-toggle audio-toggle-music" type="button" aria-pressed="true">
+              <span class="audio-toggle-label">Müzik</span>
+              <span class="audio-toggle-state">Açık</span>
+            </button>
+            <button class="audio-toggle audio-toggle-sfx" type="button" aria-pressed="true">
+              <span class="audio-toggle-label">SFX</span>
+              <span class="audio-toggle-state">Açık</span>
+            </button>
+          </div>
         </div>
+        <h1 class="pause-title">DURAKLATILDI</h1>
         <div class="pause-buttons">
           <button id="resume-btn">Devam Et</button>
           <button id="menu-btn" class="btn-secondary">Ana Menü</button>
         </div>
-        <p class="pause-hint"><kbd>Esc</kbd> — Devam et</p>
       </div>
 
       <div id="game-over-screen" class="overlay hidden">

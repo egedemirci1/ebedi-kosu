@@ -24,6 +24,27 @@ const COLLISION_Z = 0.45;
 const CLEARANCE = 0.12;
 const LANE_MATCH = 0.85;
 
+/** True when obstacle z-range this frame crossed the player plane (z=0). */
+export function obstacleSweepHitsPlayer(prevZ, z, window = COLLISION_Z) {
+  return prevZ <= window && z >= -window;
+}
+
+function playerHitbox(player) {
+  if (player.hitbox) return player.hitbox;
+
+  const sliding = player.isSliding || (player.slideBlend ?? 0) > 0.35;
+  if (sliding) {
+    return { y: player.y + 0.35, height: 0.62 };
+  }
+  return { y: player.y + 0.9, height: 1.6 };
+}
+
+function playerVerticalBounds(player) {
+  const hb = playerHitbox(player);
+  const half = hb.height / 2;
+  return { bottom: hb.y - half, top: hb.y + half };
+}
+
 const SPAWN_LOOKAHEAD = -110;
 const MIN_SPAWN_Z = -130;
 
@@ -573,22 +594,30 @@ export class ObstacleManager {
     this._activeCount--;
   }
 
-  checkCollision(player) {
-    const feetY = player.y;
+  checkCollision(player, frameMove = 0) {
+    const { bottom: playerBottom, top: playerTop } = playerVerticalBounds(player);
+    const slideActive = player.isSlideActive ?? player.isSliding;
 
     for (let i = 0; i < this._activeCount; i++) {
       const obs = this.obstacles[i];
       if (!obs.active) continue;
-      if (Math.abs(obs.z) > COLLISION_Z) continue;
+
+      const prevZ = frameMove > 0 ? obs.z - frameMove : obs.z;
+      const inZWindow =
+        frameMove > 0
+          ? obstacleSweepHitsPlayer(prevZ, obs.z)
+          : Math.abs(obs.z) <= COLLISION_Z;
+      if (!inZWindow) continue;
       if (Math.abs(player.x - LANES[obs.lane]) > LANE_MATCH) continue;
 
       if (obs.slideUnder) {
-        if (player.isSlideActive ?? player.isSliding) continue;
-        if (obs.beamBottom != null && feetY >= obs.beamBottom - CLEARANCE) continue;
+        const beamBottom = obs.beamBottom ?? 1.22;
+        if (slideActive && playerTop <= beamBottom - CLEARANCE) continue;
+        if (playerBottom >= beamBottom - CLEARANCE) continue;
         return obs;
       }
 
-      if (obs.jumpable && feetY >= obs.topY - CLEARANCE) continue;
+      if (obs.jumpable && playerBottom >= obs.topY - CLEARANCE) continue;
 
       return obs;
     }
@@ -637,3 +666,5 @@ export class ObstacleManager {
     this.prefill();
   }
 }
+
+export { COLLISION_Z };
