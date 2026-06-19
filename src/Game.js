@@ -631,7 +631,7 @@ export class Game {
       this.sfx.playObstacleHit();
     }
     this.player.stumble(0.6, wallSide);
-    this.creature.lunge(3);
+    this.creature.lunge(6);
     this.shakeIntensity = 0.3;
   }
 
@@ -801,7 +801,7 @@ export class Game {
     const best = this.getBestScore();
     if (this.ui.bestScoreGameOver) {
       this.ui.bestScoreGameOver.textContent =
-        best > 0 ? `En iyi skor: ${best}m` : '';
+        best > 0 ? `Rekorun: ${best}m` : '';
     }
 
     this.updateBestScoreUI();
