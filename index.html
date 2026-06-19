@@ -11,19 +11,23 @@
       <div id="speed-fx" class="speed-fx hidden" aria-hidden="true"></div>
       <div id="jump-fx" class="jump-fx hidden" aria-hidden="true"></div>
       <div id="ghost-fx" class="ghost-fx hidden" aria-hidden="true"></div>
+      <div id="story-toast" class="story-toast hidden" aria-live="polite" role="status">
+        <p id="story-toast-milestone" class="story-toast-milestone"></p>
+        <p id="story-toast-text" class="story-toast-text"></p>
+      </div>
       <div id="hud">
         <div class="hud-top">
-          <div class="hud-left">
+          <div class="hud-side hud-side-left">
             <div class="hud-item hud-distance">
               <span class="label">Mesafe</span>
-              <span class="hud-value"><span id="score">0</span>m</span>
-            </div>
-            <div class="hud-item danger">
-              <span class="label">Tehlike</span>
-              <div id="danger-bar"><div id="danger-fill"></div></div>
+              <span class="hud-value"><span id="score">0</span><span class="hud-unit">m</span></span>
             </div>
           </div>
-          <div class="hud-right">
+          <div class="hud-item danger hud-center">
+            <span class="label">Tehlike</span>
+            <div id="danger-bar"><div id="danger-fill"></div></div>
+          </div>
+          <div class="hud-side hud-side-right">
             <div class="hud-item coins hud-coin-chip">
               <span class="label">Altın</span>
               <span id="coin-count">0</span>
@@ -166,13 +170,26 @@
       </div>
 
       <div id="game-over-screen" class="overlay hidden">
-        <h1>YAKALANDIN!</h1>
-        <p id="final-score">0 metre koştun</p>
-        <p id="final-coins" class="final-coins"></p>
-        <p id="best-score-gameover" class="best-score"></p>
-        <div class="game-over-buttons">
-          <button id="restart-btn">Tekrar Dene</button>
-          <button id="gameover-menu-btn" class="btn-secondary">Ana Menü</button>
+        <div class="game-over-panel">
+          <h1>YAKALANDIN!</h1>
+          <div class="game-over-stats">
+            <div class="game-over-stat stat-distance">
+              <span class="game-over-stat-label">Mesafe</span>
+              <span id="final-score" class="game-over-stat-value">0 m</span>
+            </div>
+            <div class="game-over-stat stat-coins" id="final-coins-row">
+              <span class="game-over-stat-label">Altın</span>
+              <span id="final-coins" class="game-over-stat-value">0</span>
+            </div>
+            <div class="game-over-stat stat-record" id="best-score-gameover-row">
+              <span class="game-over-stat-label">Rekor</span>
+              <span id="best-score-gameover" class="game-over-stat-value">0 m</span>
+            </div>
+          </div>
+          <div class="game-over-buttons">
+            <button id="restart-btn">Tekrar Dene</button>
+            <button id="gameover-menu-btn" class="btn-secondary">Ana Menü</button>
+          </div>
         </div>
       </div>
     </div>

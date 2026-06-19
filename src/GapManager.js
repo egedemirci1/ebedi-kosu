@@ -7,6 +7,8 @@ const FLOOR_Y = -FLOOR_THICKNESS / 2;
 const GAP_TYPE_FULL = 'full';
 const GAP_TYPE_BRIDGE = 'bridge';
 const BRIDGE_SPAWN_CHANCE = 0.28;
+const BRIDGE_SPAWN_CHANCE_MAX = 0.42;
+const GAP_DIFFICULTY_DISTANCE = 3500;
 const MIN_BRIDGE_GAP_WIDTH = 5.2;
 const MAX_BRIDGE_GAP_WIDTH = 7.8;
 /** Planks extend past gap edges so no void shows at entry/exit. */
@@ -40,15 +42,16 @@ export function getMaxJumpableGapWidth(speed = DEFAULT_RUN_SPEED) {
   return Math.max(MIN_GAP_WIDTH, Math.min(ABS_MAX_GAP_WIDTH, physicsMax));
 }
 
-export function randomGapInterval() {
+export function randomGapInterval(difficulty = 0) {
+  const tight = Math.min(1, difficulty) * 10;
   const roll = Math.random();
   if (roll < 0.2) {
-    return MIN_GAP_INTERVAL + Math.random() * 10;
+    return MIN_GAP_INTERVAL + Math.random() * 10 - tight * 0.4;
   }
   if (roll < 0.75) {
-    return MIN_GAP_INTERVAL + Math.random() * (MAX_GAP_INTERVAL - MIN_GAP_INTERVAL);
+    return MIN_GAP_INTERVAL + Math.random() * (MAX_GAP_INTERVAL - MIN_GAP_INTERVAL) - tight;
   }
-  return MAX_GAP_INTERVAL - 14 + Math.random() * 18;
+  return MAX_GAP_INTERVAL - 14 + Math.random() * 18 - tight * 0.6;
 }
 
 export class GapManager {
@@ -62,6 +65,7 @@ export class GapManager {
     this.time = 0;
     this._activeCount = 0;
     this.currentSpeed = DEFAULT_RUN_SPEED;
+    this.runDistance = 0;
 
     this.emberMats = [
       new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true, fog: false }),
@@ -436,8 +440,12 @@ export class GapManager {
   }
 
   trySpawnNext() {
+    const gapDifficulty = Math.min(1, this.runDistance / GAP_DIFFICULTY_DISTANCE);
+    const bridgeChance =
+      BRIDGE_SPAWN_CHANCE + gapDifficulty * (BRIDGE_SPAWN_CHANCE_MAX - BRIDGE_SPAWN_CHANCE);
+
     for (let attempt = 0; attempt < 12; attempt++) {
-      const useBridge = Math.random() < BRIDGE_SPAWN_CHANCE;
+      const useBridge = Math.random() < bridgeChance;
       const width = useBridge ? this.randomBridgeGapWidth() : this.randomGapWidth();
       if (this.canSpawnAt(this.nextGapZ, width)) {
         if (useBridge) {
@@ -445,7 +453,7 @@ export class GapManager {
         } else {
           this.spawnGap(this.nextGapZ, width);
         }
-        this.nextGapZ -= randomGapInterval();
+        this.nextGapZ -= randomGapInterval(gapDifficulty);
         return true;
       }
       this.nextGapZ -= 4;
@@ -466,6 +474,7 @@ export class GapManager {
   update(dt, speed, distance) {
     this.time += dt;
     this.currentSpeed = speed;
+    this.runDistance = distance;
 
     if (distance < GAP_START_DISTANCE) return;
 
@@ -526,6 +535,7 @@ export class GapManager {
     this.nextGapZ = -90;
     this.spawnedFirst = false;
     this.time = 0;
+    this.runDistance = 0;
   }
 }
 

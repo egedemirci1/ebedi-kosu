@@ -365,6 +365,80 @@ export class Sfx {
     void this._playFallScream();
   }
 
+  playSlide() {
+    if (!this.enabled) return;
+    void this._playSlide();
+  }
+
+  playSlideSkid() {
+    if (!this.enabled) return;
+    void this._playSlideSkid();
+  }
+
+  async _playSlide() {
+    await this.ensureReady();
+    const t = this.ctx.currentTime;
+
+    const master = this.ctx.createGain();
+    master.gain.setValueAtTime(0.28, t);
+    master.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+    master.connect(this.ctx.destination);
+
+    this.playNoiseBurst(master, t, 0.14, 420, 'bandpass', 0.55, 0.16);
+
+    const scrape = this.ctx.createOscillator();
+    const scrapeGain = this.ctx.createGain();
+    const scrapeFilter = this.ctx.createBiquadFilter();
+    scrape.type = 'sawtooth';
+    scrape.frequency.setValueAtTime(180, t);
+    scrape.frequency.exponentialRampToValueAtTime(95, t + 0.18);
+    scrapeFilter.type = 'lowpass';
+    scrapeFilter.frequency.setValueAtTime(900, t);
+    scrapeFilter.frequency.exponentialRampToValueAtTime(260, t + 0.2);
+    scrapeGain.gain.setValueAtTime(0.16, t);
+    scrapeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    scrape.connect(scrapeFilter);
+    scrapeFilter.connect(scrapeGain);
+    scrapeGain.connect(master);
+    scrape.start(t);
+    scrape.stop(t + 0.22);
+
+    const whoosh = this.ctx.createOscillator();
+    const whooshGain = this.ctx.createGain();
+    whoosh.type = 'triangle';
+    whoosh.frequency.setValueAtTime(520, t);
+    whoosh.frequency.exponentialRampToValueAtTime(220, t + 0.12);
+    whooshGain.gain.setValueAtTime(0.08, t);
+    whooshGain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    whoosh.connect(whooshGain);
+    whooshGain.connect(master);
+    whoosh.start(t);
+    whoosh.stop(t + 0.16);
+  }
+
+  async _playSlideSkid() {
+    await this.ensureReady();
+    const t = this.ctx.currentTime;
+
+    const master = this.ctx.createGain();
+    master.gain.setValueAtTime(0.12, t);
+    master.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    master.connect(this.ctx.destination);
+
+    this.playNoiseBurst(master, t, 0.05, 650, 'bandpass', 0.35, 0.05);
+
+    const tick = this.ctx.createOscillator();
+    const tickGain = this.ctx.createGain();
+    tick.type = 'square';
+    tick.frequency.setValueAtTime(140 + Math.random() * 40, t);
+    tickGain.gain.setValueAtTime(0.04, t);
+    tickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    tick.connect(tickGain);
+    tickGain.connect(master);
+    tick.start(t);
+    tick.stop(t + 0.05);
+  }
+
   async _playFallScream() {
     await this.ensureReady();
     const t = this.ctx.currentTime;

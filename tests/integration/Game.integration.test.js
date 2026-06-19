@@ -41,6 +41,28 @@ describe('Game integration', () => {
       expect(game.sfx.playObstacleHit).toHaveBeenCalled();
       expect(game.shakeIntensity).toBeGreaterThan(0);
     });
+
+    it('raises danger to half after the first hit', () => {
+      game.applyHit(0);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.5, 2);
+    });
+
+    it('catches the player when two hits fill the danger bar', () => {
+      game.applyHit(0);
+      game.applyHit(0);
+      expect(game.creature.dangerLevel).toBe(1);
+      expect(game.creature.hasCaught()).toBe(true);
+    });
+
+    it('does not catch on the second hit if danger had recovered', () => {
+      game.applyHit(0);
+      game.creature.lungeTimer = 0;
+      game.creature.chaseDistance = game.creature.chaseDistanceForDanger(0.3);
+      game.creature.targetDistance = game.creature.farDistance;
+      game.applyHit(0);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.8, 1);
+      expect(game.creature.hasCaught()).toBe(false);
+    });
   });
 
   describe('tryJump / super jump duration', () => {

@@ -52,6 +52,7 @@ function playerVerticalBounds(player) {
 }
 
 const SPAWN_LOOKAHEAD = -110;
+const OBSTACLE_DIFFICULTY_DISTANCE = 1100;
 const MIN_SPAWN_Z = -130;
 
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -466,7 +467,7 @@ export class ObstacleManager {
 
   prefill() {
     let attempts = 0;
-    while (this.nextZ > MIN_SPAWN_Z && attempts < 16) {
+    while (this.nextZ > MIN_SPAWN_Z && attempts < 22) {
       this.spawn();
       attempts++;
     }
@@ -553,12 +554,50 @@ export class ObstacleManager {
       return;
     }
 
-    const type = this.pickType();
-    const lane = Math.floor(Math.random() * 3);
-    this.acquireObstacle(type, lane, this.nextZ);
+    const lanes = this.pickSpawnLanes();
+    for (let i = 0; i < lanes.length; i++) {
+      const type = this.pickTypeForWave(lanes.length, i);
+      this.acquireObstacle(type, lanes[i], this.nextZ);
+    }
 
-    this.nextZ -= 8 + Math.random() * 6;
+    this.nextZ -= this.nextSpawnGap();
     this.spawnTimer = this.spawnInterval;
+  }
+
+  pickSpawnLanes() {
+    const d = this.difficulty;
+    const roll = Math.random();
+    let count = 1;
+
+    if (d >= 0.1) {
+      const twoLaneChance = 0.22 + d * 0.58;
+      if (roll < twoLaneChance) {
+        count = 2;
+      } else if (d >= 0.45 && roll < twoLaneChance + 0.06 + d * 0.14) {
+        count = 3;
+      }
+    }
+
+    const picked = [];
+    const pool = [0, 1, 2];
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      picked.push(pool.splice(idx, 1)[0]);
+    }
+    return picked;
+  }
+
+  /** Triple rows always leave one jump, one slide, and one jump lane. */
+  pickTypeForWave(laneCount, index) {
+    if (laneCount >= 3) {
+      return ['low', 'gate', 'barrier'][index];
+    }
+    return this.pickType();
+  }
+
+  nextSpawnGap() {
+    const tight = this.difficulty * 2.2;
+    return 4.8 + Math.random() * 4.2 - tight;
   }
 
   pickType() {
@@ -632,8 +671,8 @@ export class ObstacleManager {
   }
 
   update(dt, speed, distance) {
-    this.difficulty = Math.min(1, distance / 500);
-    this.spawnInterval = Math.max(0.9, 1.8 - this.difficulty * 0.7);
+    this.difficulty = Math.min(1, distance / OBSTACLE_DIFFICULTY_DISTANCE);
+    this.spawnInterval = Math.max(0.55, 1.45 - this.difficulty * 0.78);
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 || this.getFurthestZ() > SPAWN_LOOKAHEAD) {
@@ -674,4 +713,4 @@ export class ObstacleManager {
   }
 }
 
-export { COLLISION_Z };
+export { COLLISION_Z, OBSTACLE_DIFFICULTY_DISTANCE };

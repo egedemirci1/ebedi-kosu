@@ -1,10 +1,14 @@
 /** Matches Game.js run speed — soft cap with diminishing acceleration. */
 export const BASE_RUN_SPEED = 14;
 export const MAX_RUN_SPEED = 26;
-/** Distance scale: larger = slower approach to max speed (early game stays familiar). */
-export const SPEED_RAMP_DISTANCE = 1400;
+/** Distance scale: larger = slower approach to max speed (mid-run keeps accelerating). */
+export const SPEED_RAMP_DISTANCE = 2400;
 export const MAX_SPEED_MULTIPLIER = 1.3;
 export const RUN_PHYSICS_TOLERANCE = 1.2;
+
+/** Full danger bar (100%) after this many clean hits with no recovery between them. */
+export const HITS_TO_CATCH = 2;
+export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
 
 const SPEED_HEADROOM = MAX_RUN_SPEED - BASE_RUN_SPEED;
 

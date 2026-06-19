@@ -24,6 +24,9 @@ const GAME_DOM_IDS = [
   'leaderboard-list',
   'leaderboard-empty',
   'leaderboard-error',
+  'story-toast',
+  'story-toast-milestone',
+  'story-toast-text',
 ];
 
 export function setupGameDOM() {

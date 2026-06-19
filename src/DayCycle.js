@@ -124,7 +124,7 @@ function lerpPhase(a, b, t) {
   };
 }
 
-export const DAY_PHASE_DISTANCE = 2000;
+export const DAY_PHASE_DISTANCE = 2800;
 export const DAY_CYCLE_DISTANCE = DAY_PHASE_DISTANCE * PHASES.length;
 
 export function progressForDistance(distance, phaseDistance = DAY_PHASE_DISTANCE) {

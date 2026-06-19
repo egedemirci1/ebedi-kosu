@@ -32,6 +32,29 @@ describe('Creature', () => {
     });
   });
 
+  describe('applyHitDanger', () => {
+    it('sets danger to half on first hit pressure', () => {
+      creature.applyHitDanger(0.5);
+      expect(creature.dangerLevel).toBeCloseTo(0.5, 2);
+    });
+
+    it('lets the creature retreat while running cleanly', () => {
+      creature.applyHitDanger(0.5);
+      creature.lungeTimer = 0;
+      creature.update(3, 0, false);
+      expect(creature.dangerLevel).toBeLessThan(0.5);
+      expect(creature.chaseDistance).toBeGreaterThan(creature.chaseDistanceForDanger(0.5));
+    });
+  });
+
+  describe('forceCatch', () => {
+    it('reaches catch threshold immediately', () => {
+      creature.forceCatch();
+      expect(creature.dangerLevel).toBe(1);
+      expect(creature.hasCaught()).toBe(true);
+    });
+  });
+
   describe('lunge', () => {
     it('never pulls chase distance below minimum floor', () => {
       creature.chaseDistance = creature.minDistance + 0.1;

@@ -1,41 +1,67 @@
 import { describe, it, expect } from 'vitest';
-import { ChaseMusic, musicTierForDistance, MUSIC_TIER_THRESHOLDS } from '../../src/ChaseMusic.js';
+import {
+  ChaseMusic,
+  musicProfileForDistance,
+  CHASE_TIER_THRESHOLDS,
+  LATE_SONG_DISTANCE,
+} from '../../src/ChaseMusic.js';
 
 describe('ChaseMusic tiers', () => {
-  it('maps distance to tier thresholds', () => {
-    expect(musicTierForDistance(0)).toBe(0);
-    expect(musicTierForDistance(999)).toBe(0);
-    expect(musicTierForDistance(MUSIC_TIER_THRESHOLDS[0])).toBe(1);
-    expect(musicTierForDistance(5000)).toBe(1);
-    expect(musicTierForDistance(MUSIC_TIER_THRESHOLDS[1])).toBe(2);
-    expect(musicTierForDistance(50000)).toBe(2);
+  it('maps distance to chase tiers and late song', () => {
+    expect(musicProfileForDistance(0)).toEqual({ song: 'chase', tier: 0 });
+    expect(musicProfileForDistance(CHASE_TIER_THRESHOLDS[0] - 1)).toEqual({
+      song: 'chase',
+      tier: 0,
+    });
+    expect(musicProfileForDistance(CHASE_TIER_THRESHOLDS[0])).toEqual({ song: 'chase', tier: 1 });
+    expect(musicProfileForDistance(2500)).toEqual({ song: 'chase', tier: 1 });
+    expect(musicProfileForDistance(CHASE_TIER_THRESHOLDS[1])).toEqual({ song: 'chase', tier: 2 });
+    expect(musicProfileForDistance(LATE_SONG_DISTANCE - 1)).toEqual({ song: 'chase', tier: 2 });
+    expect(musicProfileForDistance(LATE_SONG_DISTANCE)).toEqual({ song: 'late', tier: 0 });
+    expect(musicProfileForDistance(50000)).toEqual({ song: 'late', tier: 0 });
   });
 
-  it('increases BPM when tier changes', () => {
+  it('increases BPM when chase tier changes', () => {
     const music = new ChaseMusic();
-    expect(music.tierConfig.bpm).toBe(128);
+    expect(music.tierConfig.bpm).toBe(118);
 
     music.setTier(1);
     expect(music.tier).toBe(1);
-    expect(music.tierConfig.bpm).toBe(148);
+    expect(music.tierConfig.bpm).toBe(124);
 
     music.setTier(2);
-    expect(music.tierConfig.bpm).toBe(172);
+    expect(music.tierConfig.bpm).toBe(132);
   });
 
-  it('ignores duplicate tier updates', () => {
+  it('uses groove configs with melody for chase tiers', () => {
     const music = new ChaseMusic();
-    music.setTier(1);
+    expect(music.tierConfig.melodyNotes).toBeDefined();
+    expect(music.tierConfig.bassPattern).toBeDefined();
+  });
+
+  it('switches to late disco song with distinct BPM and layout', () => {
+    const music = new ChaseMusic();
+    music.setProfile({ song: 'late', tier: 0 });
+    expect(music.song).toBe('late');
+    expect(music.tierConfig.bpm).toBe(142);
+    expect(music.tierConfig.stabChords).toBeDefined();
+    expect(music.tierConfig.sparkleScale).toBeDefined();
+    expect(music.tierConfig.padChords).toBeUndefined();
+  });
+
+  it('ignores duplicate profile updates', () => {
+    const music = new ChaseMusic();
+    music.setProfile({ song: 'chase', tier: 1 });
     music.beatIndex = 7;
-    music.setTier(1);
+    music.setProfile({ song: 'chase', tier: 1 });
     expect(music.beatIndex).toBe(7);
   });
 
-  it('resets beat index when tier changes during play', () => {
+  it('resets beat index when profile changes during play', () => {
     const music = new ChaseMusic();
     music.playing = true;
     music.beatIndex = 11;
-    music.setTier(2);
+    music.setProfile({ song: 'late', tier: 0 });
     expect(music.beatIndex).toBe(0);
   });
 });

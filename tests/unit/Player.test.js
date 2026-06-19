@@ -92,6 +92,19 @@ describe('Player', () => {
       player.isSliding = true;
       expect(player.hitbox.height).toBeLessThan(1);
     });
+
+    it('signals slide start once when entering slide', () => {
+      player.update(0.016, true, true);
+      expect(player.consumeSlideStart()).toBe(true);
+      expect(player.consumeSlideStart()).toBe(false);
+    });
+
+    it('spawns slide sparks while sliding on the ground', () => {
+      player.update(0.016, true, true);
+      for (let i = 0; i < 8; i++) player.update(0.03, true, true);
+      const activeSparks = player.slideSparks.filter((s) => s.life > 0);
+      expect(activeSparks.length).toBeGreaterThan(0);
+    });
   });
 
   describe('lane walls', () => {

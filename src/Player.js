@@ -21,6 +21,7 @@ const TRAIL_COUNT = 3;
 const TRAIL_SPACING = 0.35;
 const TRAIL_STAND_Y = 0.32;
 const TRAIL_SLIDE_Y = 0.14;
+const SLIDE_SPARK_COUNT = 3;
 
 export class Player {
   constructor(scene) {
@@ -42,6 +43,8 @@ export class Player {
     this.wallBounceHomeX = 0;
     this.runPhase = 0;
     this.trailSpawnTimer = 0;
+    this.slideSpawnTimer = 0;
+    this._slideStartPending = false;
     this.isGhostVisual = false;
     this.isSliding = false;
     this.slideTimer = 0;
@@ -109,6 +112,33 @@ export class Player {
         x: this.x,
         y: TRAIL_STAND_Y,
         z: (i + 1) * TRAIL_SPACING,
+        kind: 'run',
+      });
+    }
+
+    this.slideSparks = [];
+    for (let i = 0; i < SLIDE_SPARK_COUNT; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.04, 0.14 - i * 0.015, 8),
+        new THREE.MeshBasicMaterial({
+          color: 0x88ddff,
+          transparent: true,
+          opacity: 0,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          fog: true,
+        })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      scene.add(mesh);
+      this.slideSparks.push({
+        mesh,
+        life: 0,
+        maxLife: 0.14 + i * 0.02,
+        x: this.x,
+        y: TRAIL_SLIDE_Y,
+        z: 0.2,
+        drift: (i - 2) * 0.08,
       });
     }
 
@@ -155,8 +185,15 @@ export class Player {
 
   startSlide(duration = SLIDE_DURATION) {
     if (!this.canSlide()) return false;
+    if (!this.isSliding) this._slideStartPending = true;
     this.isSliding = true;
     this.slideTimer = duration;
+    return true;
+  }
+
+  consumeSlideStart() {
+    if (!this._slideStartPending) return false;
+    this._slideStartPending = false;
     return true;
   }
 
@@ -245,18 +282,56 @@ export class Player {
       trail.mesh.material.opacity = 0;
       trail.mesh.visible = false;
     }
+    for (const spark of this.slideSparks) {
+      spark.life = 0;
+      spark.mesh.material.opacity = 0;
+      spark.mesh.visible = false;
+    }
     this.trailSpawnTimer = 0;
+    this.slideSpawnTimer = 0;
+  }
+
+  spawnTrailPuff(kind = 'run') {
+    const slot = this.trails.reduce(
+      (oldest, t, i, arr) => (t.life / t.maxLife < arr[oldest].life / arr[oldest].maxLife ? i : oldest),
+      0
+    );
+    const trail = this.trails[slot];
+    const slideBlend = kind === 'slide' ? 1 : this.slideBlend;
+    trail.kind = kind;
+    trail.life = trail.maxLife * (kind === 'slide' ? 0.85 : 1);
+    trail.x = this.x + (kind === 'slide' ? (Math.random() - 0.5) * 0.18 : 0);
+    trail.y = this.trailFeetY(slideBlend);
+    trail.z = TRAIL_SPACING * 0.45;
+    trail.mesh.visible = true;
+    trail.mesh.material.color.setHex(kind === 'slide' ? 0x88eeff : 0x44ccff);
+  }
+
+  spawnSlideSpark() {
+    const slot = this.slideSparks.reduce(
+      (oldest, s, i, arr) => (s.life / s.maxLife < arr[oldest].life / arr[oldest].maxLife ? i : oldest),
+      0
+    );
+    const spark = this.slideSparks[slot];
+    spark.life = spark.maxLife;
+    spark.x = this.x + (Math.random() - 0.5) * 0.28;
+    spark.y = this.y + TRAIL_SLIDE_Y + 0.02;
+    spark.z = 0.15 + Math.random() * 0.12;
+    spark.drift = (Math.random() - 0.5) * 0.35;
+    spark.mesh.visible = true;
   }
 
   updateTrails(dt) {
-    const running = this.onGround && !this.isFalling && !this.isStumbling && !this.isSliding;
+    const running =
+      this.onGround && !this.isFalling && !this.isStumbling && !this.isSliding && this.slideBlend < 0.2;
+    const sliding =
+      this.onGround &&
+      !this.isFalling &&
+      !this.isStumbling &&
+      (this.isSliding || this.slideBlend > 0.35);
 
     if (this.isStumbling || this.wallBounceTimer > 0) {
-      for (const trail of this.trails) {
-        trail.life = 0;
-        trail.mesh.material.opacity = 0;
-        trail.mesh.visible = false;
-      }
+      this.resetTrails();
       return;
     }
 
@@ -264,17 +339,21 @@ export class Player {
       this.trailSpawnTimer += dt;
       if (this.trailSpawnTimer >= 0.045) {
         this.trailSpawnTimer = 0;
-        const slot = this.trails.reduce(
-          (oldest, t, i, arr) => (t.life / t.maxLife < arr[oldest].life / arr[oldest].maxLife ? i : oldest),
-          0
-        );
-        const trail = this.trails[slot];
-        trail.life = trail.maxLife;
-        trail.x = this.x;
-        trail.y = this.trailFeetY(this.slideBlend);
-        trail.z = TRAIL_SPACING * 0.5;
-        trail.mesh.visible = true;
+        this.spawnTrailPuff('run');
       }
+    } else {
+      this.trailSpawnTimer = 0;
+    }
+
+    if (sliding) {
+      this.slideSpawnTimer += dt;
+      if (this.slideSpawnTimer >= 0.05) {
+        this.slideSpawnTimer = 0;
+        this.spawnSlideSpark();
+        if (Math.random() < 0.22) this.spawnTrailPuff('slide');
+      }
+    } else {
+      this.slideSpawnTimer = 0;
     }
 
     for (const trail of this.trails) {
@@ -285,15 +364,42 @@ export class Player {
       }
 
       trail.life -= dt;
-      trail.z += dt * 9;
+      const isSlide = trail.kind === 'slide';
+      trail.z += dt * (isSlide ? 17 : 9);
       const t = Math.max(0, trail.life / trail.maxLife);
       trail.mesh.position.set(trail.x, trail.y, trail.z);
-      trail.mesh.material.opacity = t * 0.38;
+      trail.mesh.material.opacity = t * (isSlide ? 0.28 : 0.38);
       const puff = 0.55 + t * 0.45;
-      trail.mesh.scale.set(puff, puff * 0.52, puff);
+      if (isSlide) {
+        trail.mesh.scale.set(puff * 1.45, puff * 0.18, puff * 1.05);
+      } else {
+        trail.mesh.scale.set(puff, puff * 0.52, puff);
+      }
 
       if (trail.life <= 0) {
         trail.mesh.visible = false;
+      }
+    }
+
+    for (const spark of this.slideSparks) {
+      if (spark.life <= 0) {
+        spark.mesh.material.opacity = 0;
+        spark.mesh.visible = false;
+        continue;
+      }
+
+      spark.life -= dt;
+      spark.x += spark.drift * dt;
+      spark.z += dt * 18;
+      const t = Math.max(0, spark.life / spark.maxLife);
+      spark.mesh.position.set(spark.x, spark.y, spark.z);
+      spark.mesh.material.opacity = t * 0.34;
+      spark.mesh.rotation.z += dt * 10;
+      const ring = 0.55 + t * 0.55;
+      spark.mesh.scale.set(ring, ring, 1);
+
+      if (spark.life <= 0) {
+        spark.mesh.visible = false;
       }
     }
   }
@@ -337,8 +443,10 @@ export class Player {
     }
 
     const canGroundSlide = this.canSlide() && hasFloor;
+    const wasSliding = this.isSliding;
 
     if (wantsDown && canGroundSlide) {
+      if (!wasSliding) this._slideStartPending = true;
       this.isSliding = true;
     } else if (this.slideTimer <= 0) {
       this.isSliding = false;
@@ -347,6 +455,7 @@ export class Player {
     if (!hasFloor || this.isFalling || this.isStumbling) {
       this.isSliding = false;
       this.slideTimer = 0;
+      this._slideStartPending = false;
     }
   }
 

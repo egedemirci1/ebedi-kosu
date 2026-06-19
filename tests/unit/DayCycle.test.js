@@ -27,40 +27,43 @@ describe('DayCycle', () => {
     expect(Math.abs(before.stars - after.stars)).toBeLessThan(0.4);
   });
 
-  it('advances by distance every 2000 metres', () => {
+  it('advances by distance every phase length', () => {
     const cycle = new DayCycle();
     cycle.setDistance(0);
     expect(getDayPhaseLabelForDistance(cycle.distance)).toBe('Sabah');
 
-    cycle.setDistance(2000);
+    cycle.setDistance(DAY_PHASE_DISTANCE);
     expect(cycle.progress).toBeCloseTo(0.25, 5);
     expect(getDayPhaseLabelForDistance(cycle.distance)).toBe('Öğlen');
 
-    cycle.setDistance(4000);
+    cycle.setDistance(DAY_PHASE_DISTANCE * 2);
     expect(getDayPhaseLabelForDistance(cycle.distance)).toBe('Akşam');
 
-    cycle.setDistance(6000);
+    cycle.setDistance(DAY_PHASE_DISTANCE * 3);
     expect(getDayPhaseLabelForDistance(cycle.distance)).toBe('Gece');
 
-    cycle.setDistance(8000);
+    cycle.setDistance(DAY_CYCLE_DISTANCE);
     expect(cycle.progress).toBeCloseTo(0, 5);
     expect(getDayPhaseLabelForDistance(cycle.distance)).toBe('Sabah');
   });
 
   it('wraps distance progress across the full cycle', () => {
-    expect(progressForDistance(1000)).toBeCloseTo(0.125, 5);
-    expect(progressForDistance(8500)).toBeCloseTo(0.0625, 5);
+    expect(progressForDistance(DAY_PHASE_DISTANCE / 2)).toBeCloseTo(0.125, 5);
+    expect(progressForDistance(DAY_CYCLE_DISTANCE + DAY_PHASE_DISTANCE / 2)).toBeCloseTo(
+      0.125,
+      5
+    );
     const cycle = new DayCycle();
     cycle.reset(500);
     expect(cycle.distance).toBe(500);
-    expect(cycle.progress).toBeCloseTo(0.0625, 5);
+    expect(cycle.progress).toBeCloseTo(500 / DAY_CYCLE_DISTANCE, 5);
   });
 
-  it('uses default 2000m phases and 8000m cycle', () => {
-    expect(DAY_PHASE_DISTANCE).toBe(2000);
-    expect(DAY_CYCLE_DISTANCE).toBe(8000);
+  it('uses configured phase and cycle distances', () => {
+    expect(DAY_PHASE_DISTANCE).toBe(2800);
+    expect(DAY_CYCLE_DISTANCE).toBe(DAY_PHASE_DISTANCE * 4);
     const cycle = new DayCycle();
-    expect(cycle.phaseDistance).toBe(2000);
-    expect(cycle.cycleDistance).toBe(8000);
+    expect(cycle.phaseDistance).toBe(DAY_PHASE_DISTANCE);
+    expect(cycle.cycleDistance).toBe(DAY_CYCLE_DISTANCE);
   });
 });

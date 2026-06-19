@@ -5,7 +5,7 @@ import { Creature } from './Creature.js';
 import { Track } from './Track.js';
 import { ObstacleManager } from './ObstacleManager.js';
 import { GapManager } from './GapManager.js';
-import { ChaseMusic, musicTierForDistance } from './ChaseMusic.js';
+import { ChaseMusic, musicProfileForDistance } from './ChaseMusic.js';
 import { Sfx } from './Sfx.js';
 import { Environment } from './Environment.js';
 import { BoosterManager } from './BoosterManager.js';
@@ -15,7 +15,8 @@ import { CoinManager } from './CoinManager.js';
 import { DayCycle } from './DayCycle.js';
 import { fetchTopScores, submitScore, startRunSession, isValidPlayerName, buildLeaderboardDisplayRows, formatLeaderboardDistance } from './Leaderboard.js';
 import { applyRendererProfile } from './graphicsProfile.js';
-import { runSpeedAtDistance } from '../shared/runPhysics.js';
+import { runSpeedAtDistance, DANGER_PER_HIT } from '../shared/runPhysics.js';
+import { StoryManager } from './StoryManager.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
 const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
@@ -57,6 +58,7 @@ export class Game {
     this.state = 'menu';
     this.distance = 0;
     this.musicTier = 0;
+    this.musicSong = 'chase';
     this.sessionCoins = 0;
     this.runToken = null;
     this.runActiveMs = 0;
@@ -66,6 +68,7 @@ export class Game {
     this._needsRender = true;
     this._lastCamFov = 65;
     this._fallScreamPlayed = false;
+    this._slideSkidTimer = 0;
     this.dayCycle = new DayCycle();
     this._cycleRimOpacity = 0.04;
     this.clock = new THREE.Clock();
@@ -83,7 +86,9 @@ export class Game {
       gameOverScreen: document.getElementById('game-over-screen'),
       finalScore: document.getElementById('final-score'),
       finalCoins: document.getElementById('final-coins'),
+      finalCoinsRow: document.getElementById('final-coins-row'),
       bestScoreGameOver: document.getElementById('best-score-gameover'),
+      bestScoreGameOverRow: document.getElementById('best-score-gameover-row'),
       startBtn: document.getElementById('start-btn'),
       resumeBtn: document.getElementById('resume-btn'),
       menuBtn: document.getElementById('menu-btn'),
@@ -106,7 +111,16 @@ export class Game {
       speedFx: document.getElementById('speed-fx'),
       jumpFx: document.getElementById('jump-fx'),
       ghostFx: document.getElementById('ghost-fx'),
+      storyToast: document.getElementById('story-toast'),
+      storyToastMilestone: document.getElementById('story-toast-milestone'),
+      storyToastText: document.getElementById('story-toast-text'),
     };
+
+    this.story = new StoryManager({
+      toast: this.ui.storyToast,
+      milestone: this.ui.storyToastMilestone,
+      text: this.ui.storyToastText,
+    });
 
     this.music.setEnabled(this.loadAudioPref(MUSIC_PREF_KEY, true));
     this.sfx.setEnabled(this.loadAudioPref(SFX_PREF_KEY, true));
@@ -631,7 +645,8 @@ export class Game {
       this.sfx.playObstacleHit();
     }
     this.player.stumble(0.6, wallSide);
-    this.creature.lunge(6);
+    const newDanger = Math.min(1, this.creature.dangerLevel + DANGER_PER_HIT);
+    this.creature.applyHitDanger(newDanger);
     this.shakeIntensity = 0.3;
   }
 
@@ -656,17 +671,20 @@ export class Game {
   }
 
   updateMusicTier() {
-    const tier = musicTierForDistance(this.distance);
-    if (tier === this.musicTier) return;
-    this.musicTier = tier;
-    this.music.setTier(tier);
+    const profile = musicProfileForDistance(this.distance);
+    if (profile.song === this.musicSong && profile.tier === this.musicTier) return;
+    this.musicSong = profile.song;
+    this.musicTier = profile.tier;
+    this.music.setProfile(profile);
   }
 
   resetWorld() {
     this.distance = 0;
     this.musicTier = 0;
-    this.music.setTier(0);
+    this.musicSong = 'chase';
+    this.music.setProfile({ song: 'chase', tier: 0 });
     this._fallScreamPlayed = false;
+    this._slideSkidTimer = 0;
     this.runToken = null;
     this.runActiveMs = 0;
     this.sessionCoins = 0;
@@ -682,6 +700,7 @@ export class Game {
     this.coins.reset();
     this.environment.reset();
     this.dayCycle.reset();
+    this.story.reset();
     this.applyDayCycleVisuals();
     this.player.setGhostVisual(false);
     this.updateBoosterHUD();
@@ -792,16 +811,18 @@ export class Game {
       fell: 'BOŞLUĞA DÜŞTÜN!',
     };
     this.ui.gameOverScreen.querySelector('h1').textContent = messages[reason] || messages.caught;
-    this.ui.finalScore.textContent = `${Math.floor(this.distance)} metre koştun`;
+    this.ui.finalScore.textContent = `${Math.floor(this.distance)} m`;
     if (this.ui.finalCoins) {
-      this.ui.finalCoins.textContent =
-        this.sessionCoins > 0 ? `${this.sessionCoins} altın topladın` : '';
+      const showCoins = this.sessionCoins > 0;
+      this.ui.finalCoins.textContent = String(this.sessionCoins);
+      this.ui.finalCoinsRow?.classList.toggle('hidden', !showCoins);
     }
 
     const best = this.getBestScore();
     if (this.ui.bestScoreGameOver) {
-      this.ui.bestScoreGameOver.textContent =
-        best > 0 ? `Rekorun: ${best}m` : '';
+      const showBest = best > 0;
+      this.ui.bestScoreGameOver.textContent = `${best} m`;
+      this.ui.bestScoreGameOverRow?.classList.toggle('hidden', !showBest);
     }
 
     this.updateBestScoreUI();
@@ -818,6 +839,7 @@ export class Game {
       this.boosters.update(dt);
       const runSpeed = this.speed * this.boosters.getSpeedMultiplier();
       this.distance += runSpeed * dt;
+      this.story.update(this.distance, dt);
       this.updateMusicTier();
 
       this.track.update(dt, runSpeed);
@@ -830,12 +852,25 @@ export class Game {
       this.player.update(dt, this.gaps.hasFloorAt(0, this.player.laneIndex), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
 
+      if (this.player.consumeSlideStart()) {
+        this.sfx.playSlide();
+      }
+      if (this.player.isSlideActive && this.player.onGround && !this.player.isStumbling) {
+        this._slideSkidTimer -= dt;
+        if (this._slideSkidTimer <= 0) {
+          this._slideSkidTimer = 0.1;
+          this.sfx.playSlideSkid();
+        }
+      } else {
+        this._slideSkidTimer = 0;
+      }
+
       if (this.player.isFalling && !this._fallScreamPlayed) {
         this._fallScreamPlayed = true;
         this.sfx.playFallScream();
       }
 
-      // Chase/danger ignores run speed — only hits (lunge) and stumbling pull the creature in.
+      // Hits lunge the creature in; clean runs keep it at bay.
       this.creature.update(dt, this.player.x, this.player.isStumbling);
 
       if (this.player.isFalling && this.player.y < -3) {

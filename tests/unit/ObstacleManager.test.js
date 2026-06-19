@@ -170,7 +170,7 @@ describe('ObstacleManager', () => {
       obstacles.update(0, 14, 500);
       const late = obstacles.spawnInterval;
       expect(late).toBeLessThan(early);
-      expect(late).toBeGreaterThanOrEqual(0.9);
+      expect(late).toBeGreaterThanOrEqual(0.55);
     });
   });
 });

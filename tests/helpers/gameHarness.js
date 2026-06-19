@@ -36,6 +36,7 @@ vi.mock('../../src/ChaseMusic.js', async (importOriginal) => {
       stop() {}
       setDanger() {}
       setTier() {}
+      setProfile() {}
     },
   };
 });
@@ -49,6 +50,8 @@ vi.mock('../../src/Sfx.js', () => ({
       this.playBoosterPickup = vi.fn();
       this.playCoinPickup = vi.fn();
       this.playFallScream = vi.fn();
+      this.playSlide = vi.fn();
+      this.playSlideSkid = vi.fn();
     }
 
     setEnabled() {}

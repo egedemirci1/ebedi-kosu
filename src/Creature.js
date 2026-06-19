@@ -4,6 +4,7 @@ import { createSurfaceMaterial } from './surfaceMaterial.js';
 export class Creature {
   constructor(scene) {
     this.group = new THREE.Group();
+    this.farDistance = 14;
     this.chaseDistance = 14;
     this.targetDistance = 14;
     this.minDistance = 1.8;
@@ -62,8 +63,33 @@ export class Creature {
   }
 
   get dangerLevel() {
-    const range = 14 - this.minDistance;
+    const range = this.farDistance - this.minDistance;
     return Math.max(0, Math.min(1, 1 - (this.chaseDistance - this.minDistance) / range));
+  }
+
+  chaseDistanceForDanger(fraction) {
+    const range = this.farDistance - this.minDistance;
+    return this.minDistance + range * (1 - Math.max(0, Math.min(1, fraction)));
+  }
+
+  /**
+   * Çarpma anında canavarı belirli tehlike seviyesine yaklaştırır; temiz koşuda geri açılır.
+   * @param {number} fraction 0–1 arası tehlike
+   */
+  applyHitDanger(fraction) {
+    const hitDistance = this.chaseDistanceForDanger(fraction);
+    this.chaseDistance = Math.min(this.chaseDistance, hitDistance);
+    this.targetDistance = hitDistance;
+    this.lungeTimer = 0.85;
+    this.syncGroupZ();
+  }
+
+  /** İkinci çarpma — yakalama mesafesine kilitler. */
+  forceCatch() {
+    this.chaseDistance = this.minDistance;
+    this.targetDistance = this.minDistance;
+    this.lungeTimer = 0;
+    this.syncGroupZ();
   }
 
   lunge(amount = 2.5) {
@@ -72,11 +98,15 @@ export class Creature {
     this.lungeTimer = 0.85;
   }
 
+  syncGroupZ() {
+    this.group.position.z = this.chaseDistance;
+  }
+
   update(dt, playerX, playerStumbling) {
     this.animTime += dt;
 
     const catchUpRate = playerStumbling ? 6 : 1.2;
-    const baseTarget = Math.max(this.minDistance, playerStumbling ? 11 : 14);
+    const baseTarget = Math.max(this.minDistance, playerStumbling ? 11 : this.farDistance);
 
     if (this.lungeTimer > 0) {
       this.lungeTimer -= dt;
@@ -111,10 +141,10 @@ export class Creature {
   }
 
   reset() {
-    this.chaseDistance = 14;
-    this.targetDistance = 14;
+    this.chaseDistance = this.farDistance;
+    this.targetDistance = this.farDistance;
     this.lungeTimer = 0;
     this.animTime = 0;
-    this.group.position.set(0, 0, 14);
+    this.group.position.set(0, 0, this.farDistance);
   }
 }
