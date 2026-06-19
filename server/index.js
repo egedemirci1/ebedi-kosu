@@ -33,7 +33,7 @@ app.get('/api/health', async (_req, res) => {
       database: true,
       connected: false,
       db_name: getDatabaseName(),
-      ...(LB_DEBUG ? { error: err.message } : { error: 'connection_failed' }),
+      error: err.message,
     });
   }
 });

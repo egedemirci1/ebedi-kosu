@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { lbLog } from './debug.js';
+import { lbError, lbLog } from './debug.js';
 import { sanitizePlayerName, validateDistance } from './validate.js';
 
 const { Pool } = pg;
@@ -12,6 +12,10 @@ export function getPool() {
       connectionString: process.env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    });
+    pool.on('error', (err) => {
+      lbError('pool error:', err.message);
     });
   }
   return pool;
