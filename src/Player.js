@@ -8,6 +8,7 @@ const VOID_GRAVITY = 48;
 const VOID_DROP_SPEED = 6;
 const JUMP_VY = 9.5;
 const SUPER_JUMP_VY = 13.8;
+const FAST_FALL_SPEED = 20;
 const TRAIL_COUNT = 3;
 const TRAIL_SPACING = 0.35;
 
@@ -126,6 +127,12 @@ export class Player {
     return true;
   }
 
+  fastFall() {
+    if (!this.onGround && !this.isFalling) {
+      this.vy = Math.min(this.vy, -FAST_FALL_SPEED);
+    }
+  }
+
   setGhostVisual(active) {
     if (this.isGhostVisual === active) return;
     this.isGhostVisual = active;
@@ -239,7 +246,7 @@ export class Player {
     };
   }
 
-  update(dt, hasFloor = true) {
+  update(dt, hasFloor = true, wantsFastFall = false) {
     if (this.wallBounceTimer > 0) {
       this.wallBounceTimer -= dt;
       const t = 1 - Math.max(0, this.wallBounceTimer) / WALL_BUMP_DURATION;
@@ -264,6 +271,11 @@ export class Player {
       this.onGround = false;
       const gravity = this.isFalling ? VOID_GRAVITY : GRAVITY;
       this.vy -= gravity * dt;
+
+      if (wantsFastFall && !this.isFalling) {
+        this.vy = Math.min(this.vy, -FAST_FALL_SPEED);
+      }
+
       this.y += this.vy * dt;
 
       if (!hasFloor && this.y <= 0 && this.vy <= 0 && !this.isFalling) {

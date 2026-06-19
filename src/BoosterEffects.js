@@ -1,4 +1,5 @@
 export const GHOST_DURATION = 5;
+export const JUMP_DURATION = 5;
 export const SPEED_DURATION = 4;
 export const SPEED_MULTIPLIER = 1.3;
 export const SUPER_JUMP_VY = 13.8;
@@ -6,18 +7,22 @@ export const SUPER_JUMP_VY = 13.8;
 export class BoosterEffects {
   constructor() {
     this.ghostTimer = 0;
+    this.jumpTimer = 0;
     this.speedTimer = 0;
-    this.superJumpReady = false;
   }
 
   reset() {
     this.ghostTimer = 0;
+    this.jumpTimer = 0;
     this.speedTimer = 0;
-    this.superJumpReady = false;
   }
 
   isGhostActive() {
     return this.ghostTimer > 0;
+  }
+
+  isSuperJumpActive() {
+    return this.jumpTimer > 0;
   }
 
   isSpeedActive() {
@@ -34,7 +39,7 @@ export class BoosterEffects {
         this.ghostTimer = GHOST_DURATION;
         break;
       case 'jump':
-        this.superJumpReady = true;
+        this.jumpTimer = JUMP_DURATION;
         break;
       case 'speed':
         this.speedTimer = SPEED_DURATION;
@@ -44,14 +49,9 @@ export class BoosterEffects {
     }
   }
 
-  consumeSuperJump() {
-    if (!this.superJumpReady) return false;
-    this.superJumpReady = false;
-    return true;
-  }
-
   update(dt) {
     if (this.ghostTimer > 0) this.ghostTimer = Math.max(0, this.ghostTimer - dt);
+    if (this.jumpTimer > 0) this.jumpTimer = Math.max(0, this.jumpTimer - dt);
     if (this.speedTimer > 0) this.speedTimer = Math.max(0, this.speedTimer - dt);
   }
 
@@ -59,7 +59,7 @@ export class BoosterEffects {
     return {
       ghost: this.ghostTimer,
       speed: this.speedTimer,
-      jump: this.superJumpReady,
+      jump: this.jumpTimer,
     };
   }
 }

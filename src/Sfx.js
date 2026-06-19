@@ -165,6 +165,45 @@ export class Sfx {
     void this._playBoosterPickup();
   }
 
+  async _playCoinPickup() {
+    await this.ensureReady();
+    const t = this.ctx.currentTime;
+
+    const master = this.ctx.createGain();
+    master.gain.setValueAtTime(0.28, t);
+    master.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    master.connect(this.ctx.destination);
+
+    const ping = this.ctx.createOscillator();
+    const pingGain = this.ctx.createGain();
+    ping.type = 'sine';
+    ping.frequency.setValueAtTime(880, t);
+    ping.frequency.exponentialRampToValueAtTime(1320, t + 0.06);
+    pingGain.gain.setValueAtTime(0.0001, t);
+    pingGain.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
+    pingGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    ping.connect(pingGain);
+    pingGain.connect(master);
+    ping.start(t);
+    ping.stop(t + 0.18);
+
+    const shimmer = this.ctx.createOscillator();
+    const shimmerGain = this.ctx.createGain();
+    shimmer.type = 'triangle';
+    shimmer.frequency.setValueAtTime(1760, t + 0.03);
+    shimmerGain.gain.setValueAtTime(0.08, t + 0.03);
+    shimmerGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    shimmer.connect(shimmerGain);
+    shimmerGain.connect(master);
+    shimmer.start(t + 0.03);
+    shimmer.stop(t + 0.14);
+  }
+
+  playCoinPickup() {
+    if (!this.enabled) return;
+    void this._playCoinPickup();
+  }
+
   playNoiseBurst(master, t, duration, freq, filterType, vol, decay) {
     const bufferSize = Math.floor(this.ctx.sampleRate * duration);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);

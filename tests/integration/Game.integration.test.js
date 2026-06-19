@@ -43,21 +43,21 @@ describe('Game integration', () => {
     });
   });
 
-  describe('tryJump / super jump consumption', () => {
-    it('consumes super jump only after successful grounded jump', () => {
+  describe('tryJump / super jump duration', () => {
+    it('keeps super jump active after a successful grounded jump', () => {
       game.boosters.activate('jump');
       game.player.onGround = true;
       game.tryJump();
-      expect(game.boosters.superJumpReady).toBe(false);
+      expect(game.boosters.isSuperJumpActive()).toBe(true);
       expect(game.player.vy).toBe(SUPER_JUMP_VY);
       expect(game.sfx.playJump).toHaveBeenCalled();
     });
 
-    it('does not consume super jump when airborne', () => {
+    it('does not end super jump when airborne', () => {
       game.boosters.activate('jump');
       game.player.onGround = false;
       game.tryJump();
-      expect(game.boosters.superJumpReady).toBe(true);
+      expect(game.boosters.isSuperJumpActive()).toBe(true);
       expect(game.sfx.playJump).not.toHaveBeenCalled();
     });
   });
@@ -69,7 +69,7 @@ describe('Game integration', () => {
       game.boosters.activate('speed');
       game.resetWorld();
 
-      expect(game.boosters.superJumpReady).toBe(false);
+      expect(game.boosters.isSuperJumpActive()).toBe(false);
       expect(game.boosters.isGhostActive()).toBe(false);
       expect(game.boosters.isSpeedActive()).toBe(false);
       expect(game.pickups._activeCount).toBeGreaterThan(0);

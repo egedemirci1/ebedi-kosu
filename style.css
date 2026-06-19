@@ -98,6 +98,24 @@ canvas {
   color: #a8f0ff;
 }
 
+#coin-count {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffd866;
+  text-shadow: 0 0 12px rgba(255, 200, 60, 0.35);
+}
+
+.hud-item.coins {
+  border-color: rgba(255, 190, 60, 0.35);
+}
+
+.final-coins {
+  margin: -8px 0 16px;
+  font-size: 18px;
+  color: #ffd866;
+  letter-spacing: 0.5px;
+}
+
 #danger-bar {
   width: 120px;
   height: 12px;
@@ -360,6 +378,7 @@ canvas {
 
 .leaderboard-error {
   color: #aa6666;
+  text-align: center;
 }
 
 .player-name-field {

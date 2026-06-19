@@ -10,9 +10,11 @@ import { Sfx } from './Sfx.js';
 import { Environment } from './Environment.js';
 import { BoosterManager } from './BoosterManager.js';
 import { BoosterEffects } from './BoosterEffects.js';
+import { CoinManager } from './CoinManager.js';
 import { fetchTopScores, submitScore, isValidPlayerName } from './Leaderboard.js';
 
 const HIGH_SCORE_KEY = 'ebedi-kosu-best';
+const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
 const PLAYER_NAME_KEY = 'ebedi-kosu-player-name';
 const MUSIC_PREF_KEY = 'ebedi-kosu-music';
 const SFX_PREF_KEY = 'ebedi-kosu-sfx';
@@ -32,17 +34,24 @@ export class Game {
     this.gaps = new GapManager(this.scene);
     this.gaps.setTrack(this.track);
     this.pickups = new BoosterManager(this.scene);
+    this.coins = new CoinManager(this.scene);
     this.boosters = new BoosterEffects();
 
     this.obstacles.setGapManager(this.gaps);
     this.gaps.setObstacleManager(this.obstacles);
     this.gaps.setPickupManager(this.pickups);
+    this.gaps.setCoinManager(this.coins);
     this.pickups.setGapManager(this.gaps);
     this.pickups.setObstacleManager(this.obstacles);
     this.pickups.setBoosterEffects(this.boosters);
+    this.pickups.setCoinManager(this.coins);
+    this.coins.setGapManager(this.gaps);
+    this.coins.setObstacleManager(this.obstacles);
+    this.coins.setPickupManager(this.pickups);
 
     this.state = 'menu';
     this.distance = 0;
+    this.sessionCoins = 0;
     this.baseSpeed = 14;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
@@ -55,12 +64,14 @@ export class Game {
     this.ui = {
       hud: document.getElementById('hud'),
       score: document.getElementById('score'),
+      coinCount: document.getElementById('coin-count'),
       dangerFill: document.getElementById('danger-fill'),
       bestScore: document.getElementById('best-score'),
       startScreen: document.getElementById('start-screen'),
       pauseScreen: document.getElementById('pause-screen'),
       gameOverScreen: document.getElementById('game-over-screen'),
       finalScore: document.getElementById('final-score'),
+      finalCoins: document.getElementById('final-coins'),
       bestScoreGameOver: document.getElementById('best-score-gameover'),
       startBtn: document.getElementById('start-btn'),
       resumeBtn: document.getElementById('resume-btn'),
@@ -92,6 +103,16 @@ export class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.state === 'playing') this.pause();
     });
+  }
+
+  getTotalCoins() {
+    return parseInt(localStorage.getItem(TOTAL_COINS_KEY) || '0', 10);
+  }
+
+  addCoins(amount) {
+    this.sessionCoins += amount;
+    const total = this.getTotalCoins() + amount;
+    localStorage.setItem(TOTAL_COINS_KEY, String(total));
   }
 
   getBestScore() {
@@ -264,9 +285,8 @@ export class Game {
   }
 
   tryJump() {
-    const superJump = this.boosters.superJumpReady;
+    const superJump = this.boosters.isSuperJumpActive();
     if (this.player.jump(superJump)) {
-      if (superJump) this.boosters.consumeSuperJump();
       this.sfx.playJump();
     }
   }
@@ -275,6 +295,12 @@ export class Game {
     this.boosters.activate(type);
     this.sfx.playBoosterPickup();
     this.updateBoosterHUD();
+  }
+
+  collectCoin() {
+    this.addCoins(1);
+    this.sfx.playCoinPickup();
+    this.updateUI();
   }
 
   updateBoosterHUD() {
@@ -287,7 +313,9 @@ export class Game {
     }
 
     if (this.ui.boosterJump) {
-      this.ui.boosterJump.classList.toggle('active', state.jump);
+      this.ui.boosterJump.classList.toggle('active', state.jump > 0);
+      const time = this.ui.boosterJump.querySelector('.booster-time');
+      if (time) time.textContent = state.jump > 0 ? `${state.jump.toFixed(1)}s` : '';
     }
 
     if (this.ui.boosterSpeed) {
@@ -322,6 +350,9 @@ export class Game {
         e.preventDefault();
         this.tryJump();
       }
+      if (['ArrowDown', 'KeyS'].includes(e.code)) {
+        e.preventDefault();
+      }
     });
 
     window.addEventListener('keyup', (e) => {
@@ -352,6 +383,8 @@ export class Game {
           else if (dx < -40) this.handleMove(this.player.moveLeft(), -1);
         } else if (dy < -40) {
           this.tryJump();
+        } else if (dy > 40) {
+          this.player.fastFall();
         }
       },
       { passive: true }
@@ -393,6 +426,7 @@ export class Game {
 
   resetWorld() {
     this.distance = 0;
+    this.sessionCoins = 0;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
     this.resetPlayerState();
@@ -402,6 +436,7 @@ export class Game {
     this.gaps.reset();
     this.boosters.reset();
     this.pickups.reset();
+    this.coins.reset();
     this.environment.reset();
     this.player.setGhostVisual(false);
     this.updateBoosterHUD();
@@ -494,6 +529,10 @@ export class Game {
     };
     this.ui.gameOverScreen.querySelector('h1').textContent = messages[reason] || messages.caught;
     this.ui.finalScore.textContent = `${Math.floor(this.distance)} metre koştun`;
+    if (this.ui.finalCoins) {
+      this.ui.finalCoins.textContent =
+        this.sessionCoins > 0 ? `${this.sessionCoins} coin topladın` : '';
+    }
 
     const best = this.getBestScore();
     if (this.ui.bestScoreGameOver) {
@@ -520,9 +559,12 @@ export class Game {
       this.track.updateGapMask(this.gaps);
       this.obstacles.update(dt, runSpeed, this.distance);
       this.pickups.update(dt, runSpeed);
-      this.player.update(dt, !this.gaps.isGapAt(0));
+      this.coins.update(dt, runSpeed);
+      const fastFall = this.keys['ArrowDown'] || this.keys['KeyS'];
+      this.player.update(dt, !this.gaps.isGapAt(0), fastFall);
       this.player.setGhostVisual(this.boosters.isGhostActive());
-      this.creature.update(dt, this.player.x, runSpeed, this.player.isStumbling);
+      // Chase/danger ignores run speed — only hits (lunge) and stumbling pull the creature in.
+      this.creature.update(dt, this.player.x, this.player.isStumbling);
 
       if (this.player.isFalling && this.player.y < -3) {
         this.gameOver('fell');
@@ -539,6 +581,12 @@ export class Game {
       if (pickup) {
         this.collectBooster(pickup.type);
         this.pickups.removePickup(pickup);
+      }
+
+      const coin = this.coins.checkCollection(this.player.x, this.player.laneIndex);
+      if (coin) {
+        this.collectCoin();
+        this.coins.removeCoin(coin);
       }
 
       if (this.creature.hasCaught()) {
@@ -606,6 +654,7 @@ export class Game {
 
   updateUI() {
     this.ui.score.textContent = Math.floor(this.distance);
+    if (this.ui.coinCount) this.ui.coinCount.textContent = String(this.sessionCoins);
     const pct = this.creature.dangerLevel * 100;
     this.ui.dangerFill.style.width = `${pct}%`;
   }

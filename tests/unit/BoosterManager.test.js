@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { BoosterManager, BOOSTER_TYPES } from '../../src/BoosterManager.js';
-import { BoosterEffects } from '../../src/BoosterEffects.js';
+import { BoosterEffects, JUMP_DURATION } from '../../src/BoosterEffects.js';
 import { GapManager, GAP_MARGIN } from '../../src/GapManager.js';
 import { ObstacleManager } from '../../src/ObstacleManager.js';
 import { LANES } from '../../src/scene.js';
@@ -47,11 +47,9 @@ describe('BoosterManager', () => {
       expect(manager.pickType()).toBeNull();
     });
 
-    it('unblocks jump only after super jump is consumed, not on mere timer expiry', () => {
+    it('unblocks jump after super jump duration expires', () => {
       effects.activate('jump');
-      effects.update(999);
-      expect(manager.isTypeSpawnBlocked('jump')).toBe(true);
-      effects.consumeSuperJump();
+      effects.update(JUMP_DURATION);
       expect(manager.isTypeSpawnBlocked('jump')).toBe(false);
     });
   });

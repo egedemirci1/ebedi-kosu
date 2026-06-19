@@ -36,6 +36,30 @@ describe('Player', () => {
     });
   });
 
+  describe('fast fall', () => {
+    it('drops faster toward the ground while fast-fall is held in the air', () => {
+      player.jump(false);
+      const startVy = player.vy;
+      player.update(0.016, true, true);
+      expect(player.vy).toBeLessThan(startVy);
+    });
+
+    it('does not fast fall while grounded', () => {
+      player.onGround = true;
+      player.vy = 0;
+      player.update(0.016, true, true);
+      expect(player.vy).toBe(0);
+    });
+
+    it('does not fast fall during irreversible void drop', () => {
+      player.onGround = true;
+      player.update(0.016, false);
+      expect(player.isFalling).toBe(true);
+      player.update(0.016, false, true);
+      expect(player.vy).toBeGreaterThan(-20);
+    });
+  });
+
   describe('lane walls', () => {
     it('returns wall when moving left from leftmost lane', () => {
       player.laneIndex = 0;

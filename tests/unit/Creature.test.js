@@ -64,22 +64,30 @@ describe('Creature', () => {
     it('closes distance faster while player is stumbling', () => {
       creature.chaseDistance = 12;
       creature.targetDistance = 10;
-      creature.update(0.5, 0, 14, false);
+      creature.update(0.5, 0, false);
       const normalDistance = creature.chaseDistance;
 
       creature.chaseDistance = 12;
       creature.targetDistance = 10;
-      creature.update(0.5, 0, 14, true);
+      creature.update(0.5, 0, true);
       expect(creature.chaseDistance).toBeLessThan(normalDistance);
     });
 
-    it('lowers target distance while player is stumbling at same game speed', () => {
+    it('keeps full chase distance while running cleanly', () => {
       creature.lungeTimer = 0;
-      creature.update(0.01, 0, 14, false);
+      creature.chaseDistance = 14;
+      creature.update(2, 0, false);
+      expect(creature.targetDistance).toBe(14);
+      expect(creature.chaseDistance).toBeGreaterThan(13.5);
+    });
+
+    it('lowers target distance while player is stumbling', () => {
+      creature.lungeTimer = 0;
+      creature.update(0.01, 0, false);
       const runningTarget = creature.targetDistance;
 
       creature.chaseDistance = 14;
-      creature.update(0.01, 0, 14, true);
+      creature.update(0.01, 0, true);
       expect(creature.targetDistance).toBeLessThan(runningTarget);
     });
   });

@@ -71,14 +71,11 @@ export class Creature {
     this.lungeTimer = 0.85;
   }
 
-  update(dt, playerX, gameSpeed, playerStumbling) {
+  update(dt, playerX, playerStumbling) {
     this.animTime += dt;
 
     const catchUpRate = playerStumbling ? 6 : 1.2;
-    const baseTarget = Math.max(
-      this.minDistance,
-      Math.min(18, 14 - gameSpeed * 0.15 + (playerStumbling ? -3 : 0))
-    );
+    const baseTarget = Math.max(this.minDistance, playerStumbling ? 11 : 14);
 
     if (this.lungeTimer > 0) {
       this.lungeTimer -= dt;

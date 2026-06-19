@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   BoosterEffects,
   GHOST_DURATION,
+  JUMP_DURATION,
   SPEED_DURATION,
   SPEED_MULTIPLIER,
 } from '../../src/BoosterEffects.js';
@@ -13,17 +14,21 @@ describe('BoosterEffects', () => {
     effects = new BoosterEffects();
   });
 
-  describe('consumeSuperJump', () => {
-    it('rejects consumption when super jump was never activated', () => {
-      expect(effects.consumeSuperJump()).toBe(false);
-      expect(effects.superJumpReady).toBe(false);
+  describe('super jump duration', () => {
+    it('stays active for JUMP_DURATION and allows repeated super jumps', () => {
+      effects.activate('jump');
+      expect(effects.isSuperJumpActive()).toBe(true);
+      effects.update(1);
+      expect(effects.isSuperJumpActive()).toBe(true);
+      effects.update(JUMP_DURATION - 1);
+      expect(effects.isSuperJumpActive()).toBe(false);
     });
 
-    it('rejects double consumption (one-shot contract)', () => {
+    it('re-activating jump refreshes duration', () => {
       effects.activate('jump');
-      expect(effects.consumeSuperJump()).toBe(true);
-      expect(effects.consumeSuperJump()).toBe(false);
-      expect(effects.superJumpReady).toBe(false);
+      effects.update(3);
+      effects.activate('jump');
+      expect(effects.jumpTimer).toBe(JUMP_DURATION);
     });
   });
 
@@ -33,6 +38,13 @@ describe('BoosterEffects', () => {
       effects.update(GHOST_DURATION + 10);
       expect(effects.ghostTimer).toBe(0);
       expect(effects.isGhostActive()).toBe(false);
+    });
+
+    it('does not undershoot past zero on large dt (jump)', () => {
+      effects.activate('jump');
+      effects.update(JUMP_DURATION + 10);
+      expect(effects.jumpTimer).toBe(0);
+      expect(effects.isSuperJumpActive()).toBe(false);
     });
 
     it('does not undershoot past zero on large dt (speed)', () => {
@@ -56,7 +68,7 @@ describe('BoosterEffects', () => {
       expect(effects.getHudState()).toEqual({
         ghost: 0,
         speed: 0,
-        jump: false,
+        jump: 0,
       });
     });
   });
@@ -69,12 +81,12 @@ describe('BoosterEffects', () => {
       expect(effects.ghostTimer).toBe(GHOST_DURATION);
     });
 
-    it('super jump persists while timed boosters expire independently', () => {
+    it('timed boosters expire independently', () => {
       effects.activate('jump');
       effects.activate('ghost');
       effects.activate('speed');
-      effects.update(Math.max(GHOST_DURATION, SPEED_DURATION) + 0.1);
-      expect(effects.superJumpReady).toBe(true);
+      effects.update(Math.max(GHOST_DURATION, JUMP_DURATION, SPEED_DURATION) + 0.1);
+      expect(effects.isSuperJumpActive()).toBe(false);
       expect(effects.isGhostActive()).toBe(false);
       expect(effects.isSpeedActive()).toBe(false);
     });
@@ -103,7 +115,7 @@ describe('BoosterEffects', () => {
       expect(effects.getHudState()).toEqual({
         ghost: 0,
         speed: 0,
-        jump: false,
+        jump: 0,
       });
     });
   });

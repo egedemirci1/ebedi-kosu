@@ -14,13 +14,17 @@
             <span class="label">Mesafe</span>
             <span id="score">0</span>m
           </div>
+          <div class="hud-item coins">
+            <span class="label">Coin</span>
+            <span id="coin-count">0</span>
+          </div>
           <div class="hud-item danger">
             <span class="label">Tehlike</span>
             <div id="danger-bar"><div id="danger-fill"></div></div>
           </div>
           <div id="booster-hud" class="booster-hud">
             <div id="booster-ghost" class="booster-chip ghost">Hayalet <span class="booster-time"></span></div>
-            <div id="booster-jump" class="booster-chip jump">Süper zıpla</div>
+            <div id="booster-jump" class="booster-chip jump">Süper zıpla <span class="booster-time"></span></div>
             <div id="booster-speed" class="booster-chip speed">Hız <span class="booster-time"></span></div>
           </div>
         </div>
@@ -52,7 +56,9 @@
         <div class="controls-info">
           <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
           <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
+          <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in</div>
           <div>Parlayan güçlendiricileri topla — hayalet, süper zıpla, hız</div>
+          <div>Altın coinleri topla — koşu boyunca birikir</div>
           <div><kbd>Esc</kbd> — Duraklat</div>
           <div class="mobile-hint">Mobil: sola/sağa kaydır, yukarı kaydır = zıpla · ⏸ ile duraklat</div>
         </div>
@@ -91,6 +97,7 @@
       <div id="game-over-screen" class="overlay hidden">
         <h1>YAKALANDIN!</h1>
         <p id="final-score">0 metre koştun</p>
+        <p id="final-coins" class="final-coins"></p>
         <p id="best-score-gameover" class="best-score"></p>
         <div class="game-over-buttons">
           <button id="restart-btn">Tekrar Dene</button>

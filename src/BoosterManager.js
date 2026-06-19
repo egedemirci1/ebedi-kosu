@@ -199,6 +199,7 @@ export class BoosterManager {
     this.gapManager = null;
     this.obstacleManager = null;
     this.boosterEffects = null;
+    this.coinManager = null;
     this.onCollect = null;
     this.time = 0;
 
@@ -272,13 +273,17 @@ export class BoosterManager {
     this.boosterEffects = boosterEffects;
   }
 
+  setCoinManager(coinManager) {
+    this.coinManager = coinManager;
+  }
+
   /** Block spawn only while the player still holds that booster effect. */
   isTypeSpawnBlocked(type) {
     if (!this.boosterEffects) return false;
 
     switch (type) {
       case 'jump':
-        return this.boosterEffects.superJumpReady;
+        return this.boosterEffects.isSuperJumpActive();
       case 'ghost':
         return this.boosterEffects.isGhostActive();
       case 'speed':
@@ -300,6 +305,7 @@ export class BoosterManager {
     if (this.overlapsGap(z)) return true;
     if (this.obstacleManager?.hasObstacleNear(z, 4)) return true;
     if (this.hasPickupNear(z, 5)) return true;
+    if (this.coinManager?.hasCoinNear(z, 4)) return true;
     return false;
   }
 

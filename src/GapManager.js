@@ -223,6 +223,10 @@ export class GapManager {
     this.pickupManager = pickupManager;
   }
 
+  setCoinManager(coinManager) {
+    this.coinManager = coinManager;
+  }
+
   isGapAt(worldZ) {
     for (let i = 0; i < this._activeCount; i++) {
       const gap = this.gaps[i];
@@ -310,6 +314,7 @@ export class GapManager {
   canSpawnAt(z, width) {
     if (this.obstacleManager?.hasObstacleNear(z, 5)) return false;
     if (this.pickupManager?.hasPickupOverlappingGap(z, width)) return false;
+    if (this.coinManager?.hasCoinOverlappingGap(z, width)) return false;
     if (this.isTooCloseToGap(z, width)) return false;
     return true;
   }
