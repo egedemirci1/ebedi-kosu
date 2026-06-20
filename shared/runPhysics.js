@@ -6,7 +6,7 @@ export const CORE_MAX_RUN_SPEED = 21;
 export const MAX_RUN_SPEED = 26;
 export const OVERDRIVE_MAX_SPEED = 30;
 /** Distance scale for the smooth core curve between gear jumps. */
-export const SPEED_RAMP_DISTANCE = 2200;
+export const SPEED_RAMP_DISTANCE = 1800;
 /** After this distance, speed slowly creeps toward OVERDRIVE_MAX. */
 export const OVERDRIVE_START_DISTANCE = 10000;
 export const OVERDRIVE_RAMP_DISTANCE = 12000;
@@ -23,8 +23,9 @@ export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
  */
 export const SPEED_GEAR_BONUSES = [
   { distance: 1000, bonus: 1.5 },
-  { distance: 3000, bonus: 1.5 },
-  { distance: 5000, bonus: 2.0 },
+  { distance: 2000, bonus: 1.25 },
+  { distance: 3000, bonus: 2.0 },
+  { distance: 5000, bonus: 2.5 },
 ];
 
 const CORE_HEADROOM = CORE_MAX_RUN_SPEED - BASE_RUN_SPEED;

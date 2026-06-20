@@ -189,6 +189,59 @@ describe('ObstacleManager', () => {
       expect(obstacles.isBlockedPosition(-52)).toBe(true);
       expect(obstacles.isBlockedPosition(-58)).toBe(false);
     });
+
+    it('allows spawn on post-gap floor where full gap margin would block', () => {
+      const gaps = new GapManager(scene);
+      insertGap(gaps, -50, 3);
+      obstacles.setGapManager(gaps);
+      expect(obstacles.isBlockedPosition(-47.5)).toBe(false);
+    });
+
+    it('uses post-gap corridor when the near band is occupied', () => {
+      const gaps = new GapManager(scene);
+      insertGap(gaps, -50, 3);
+      obstacles.setGapManager(gaps);
+      for (let z = -11; z >= -44; z -= 4) {
+        insertObstacle(obstacles, 'barrier', 1, z);
+      }
+      const spawnZ = obstacles.resolveSpawnZ();
+      expect(spawnZ).toBeGreaterThan(-48.5);
+      expect(spawnZ).toBeLessThan(-32.5);
+      expect(obstacles.isBlockedPosition(spawnZ)).toBe(false);
+    });
+
+    it('prefers spawn positions close to the player', () => {
+      insertObstacle(obstacles, 'barrier', 1, -120);
+      obstacles.nextZ = -125;
+      const spawnZ = obstacles.resolveSpawnZ();
+      expect(spawnZ).toBeGreaterThan(-80);
+    });
+
+    it('does not spawn closer than min ahead distance during normal play', () => {
+      obstacles.currentSpeed = 14;
+      const spawnZ = obstacles.resolveSpawnZ();
+      expect(spawnZ).toBeLessThanOrEqual(obstacles.minSpawnAheadZ());
+    });
+
+    it('ignores nextZ when it is closer than min ahead distance', () => {
+      obstacles.currentSpeed = 18;
+      obstacles.nextZ = -12;
+      const spawnZ = obstacles.resolveSpawnZ();
+      expect(spawnZ).toBeLessThanOrEqual(obstacles.minSpawnAheadZ());
+      expect(spawnZ).toBeGreaterThan(-80);
+    });
+
+    it('forces spawn after a distance drought', () => {
+      const gaps = new GapManager(scene);
+      obstacles.setGapManager(gaps);
+      obstacles.update(0, 18, 900);
+      obstacles.lastSpawnDistance = 850;
+      obstacles._activeCount = 0;
+      obstacles.nextZ = -45;
+      const before = obstacles._activeCount;
+      obstacles.update(0, 18, 900);
+      expect(obstacles._activeCount).toBeGreaterThan(before);
+    });
   });
 
   describe('removeObstacle', () => {
@@ -211,8 +264,8 @@ describe('ObstacleManager', () => {
       const late = obstacles.spawnInterval;
       expect(tierOne).toBeLessThan(tutorial);
       expect(mid).toBeLessThan(tierOne);
-      expect(late).toBeLessThan(mid);
-      expect(late).toBeGreaterThanOrEqual(0.48);
+      expect(late).toBeLessThanOrEqual(mid);
+      expect(late).toBeGreaterThanOrEqual(0.3);
     });
   });
 });

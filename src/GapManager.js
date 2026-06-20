@@ -24,6 +24,13 @@ const MAX_GAP_INTERVAL = 54;
 const FIRST_GAP_Z = -105;
 const GAP_LOOKAHEAD = -165;
 const GAP_MARGIN = 4;
+/** Obstacle spawn: block before the gap, minimal block after landing. */
+const OBSTACLE_GAP_APPROACH_MARGIN = 2.5;
+const OBSTACLE_GAP_EXIT_MARGIN = 0.6;
+/** Guaranteed obstacle waves on floor immediately after each gap. */
+const POST_GAP_OBSTACLE_WAVES = 2;
+const POST_GAP_CORRIDOR_LENGTH = 16;
+const POST_GAP_CORRIDOR_SCAN_STEP = 1.1;
 const EMBER_COUNT = 4;
 const FLOOR_LEG_WIDTH = 0.48;
 const FLOOR_LEG_DEPTH = 0.48;
@@ -354,6 +361,61 @@ export class GapManager {
     return false;
   }
 
+  isObstacleSpawnBlocked(worldZ) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      if (worldZ >= gap.startZ - OBSTACLE_GAP_APPROACH_MARGIN && worldZ <= gap.endZ) {
+        return true;
+      }
+      if (worldZ > gap.endZ && worldZ <= gap.endZ + OBSTACLE_GAP_EXIT_MARGIN) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  findPostGapSpawnZ(isPositionFree) {
+    let best = null;
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active || (gap.postGapObstacleWaves ?? 0) <= 0) continue;
+
+      const corridorStart = gap.endZ + OBSTACLE_GAP_EXIT_MARGIN + 0.35;
+      const corridorEnd = gap.endZ + POST_GAP_CORRIDOR_LENGTH;
+      for (let z = corridorStart; z <= corridorEnd; z += POST_GAP_CORRIDOR_SCAN_STEP) {
+        if (this.isObstacleSpawnBlocked(z)) continue;
+        if (!isPositionFree(z)) continue;
+        if (best === null || z > best) best = z;
+      }
+    }
+    return best;
+  }
+
+  /** @deprecated use findPostGapSpawnZ */
+  getPostGapCorridorSpawnZ(searchZ) {
+    return this.findPostGapSpawnZ(() => true);
+  }
+
+  noteObstacleSpawnedAt(worldZ) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active || (gap.postGapObstacleWaves ?? 0) <= 0) continue;
+      if (worldZ >= gap.endZ && worldZ <= gap.endZ + POST_GAP_CORRIDOR_LENGTH) {
+        gap.postGapObstacleWaves -= 1;
+        return;
+      }
+    }
+  }
+
+  hasPendingPostGapCorridors() {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (gap.active && (gap.postGapObstacleWaves ?? 0) > 0) return true;
+    }
+    return false;
+  }
+
   /** True when [centerZ - halfSpan, centerZ + halfSpan] hits a gap or its margin. */
   overlapsGapSpan(centerZ, halfSpan, margin = GAP_MARGIN) {
     const spanStart = centerZ - halfSpan;
@@ -410,6 +472,7 @@ export class GapManager {
       this.gaps.push(entry);
     }
     this._activeCount++;
+    entry.postGapObstacleWaves = POST_GAP_OBSTACLE_WAVES;
 
     return entry;
   }
@@ -542,6 +605,10 @@ export class GapManager {
 export {
   GAP_START_DISTANCE,
   GAP_MARGIN,
+  OBSTACLE_GAP_APPROACH_MARGIN,
+  OBSTACLE_GAP_EXIT_MARGIN,
+  POST_GAP_OBSTACLE_WAVES,
+  POST_GAP_CORRIDOR_LENGTH,
   MIN_FLOOR_BETWEEN_GAPS,
   MIN_GAP_WIDTH,
   ABS_MAX_GAP_WIDTH,

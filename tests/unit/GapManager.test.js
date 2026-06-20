@@ -59,6 +59,30 @@ describe('GapManager', () => {
     });
   });
 
+  describe('isObstacleSpawnBlocked', () => {
+    it('blocks approach side and gap interior but leaves post-gap floor open', () => {
+      insertGap(gaps, -50, 3);
+      expect(gaps.isObstacleSpawnBlocked(-52)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(-48.5)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(-47.5)).toBe(false);
+    });
+
+    it('reserves post-gap corridor spawn points', () => {
+      const entry = insertGap(gaps, -50, 3);
+      expect(entry.postGapObstacleWaves).toBeGreaterThan(0);
+      const spawnZ = gaps.findPostGapSpawnZ((z) => {
+        for (let i = 0; i < gaps._activeCount; i++) {
+          const gap = gaps.gaps[i];
+          if (!gap.active) continue;
+          if (Math.abs(gap.z - z) < 3.5) return false;
+        }
+        return true;
+      });
+      expect(spawnZ).not.toBeNull();
+      expect(gaps.isObstacleSpawnBlocked(spawnZ)).toBe(false);
+    });
+  });
+
   describe('coversFloorAt', () => {
     it('matches isGapAt exactly (no extra floor hiding)', () => {
       insertGap(gaps, -80, 3.2);

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANES, LANE_WIDTH } from './scene.js';
-import { GAP_MARGIN } from './GapManager.js';
 import { GRAPHICS } from './graphicsProfile.js';
-import { createSurfaceMaterial, instancedFrustumCulled } from './surfaceMaterial.js';
+import { createSurfaceMaterial } from './surfaceMaterial.js';
+import { BASE_RUN_SPEED } from '../shared/runPhysics.js';
 
 const OBSTACLE_DEFS = {
   low: { height: 1.05, meshY: 0.525, jumpable: true, slideUnder: false },
@@ -70,17 +70,17 @@ function playerVerticalBounds(player) {
   return { bottom: hb.y - half, top: hb.y + half };
 }
 
-const SPAWN_LOOKAHEAD = -110;
+const SPAWN_LOOKAHEAD_BASE = -110;
 /** Before this distance: tutorial mix only (barrier + low). */
-const OBSTACLE_TUTORIAL_END = 1000;
-/** 1k → 3.2k ramps difficulty from tier I to full. Sync with first speed gear. */
+const OBSTACLE_TUTORIAL_END = 200;
+/** 200m → 2.4k ramps difficulty from tier I to full. */
 const OBSTACLE_DIFFICULTY_RAMP = 2200;
 const OBSTACLE_OVERDRIVE_DISTANCE = 10000;
 const OBSTACLE_OVERDRIVE_RAMP = 12000;
 /** Difficulty at the first gear / music tier. */
 const OBSTACLE_TIER_I_DIFFICULTY = 0.22;
 
-/** 0–0.1 tutorial, tier jump at 1k, full ramp by ~3.2k, overdrive after 10k. */
+/** 0–0.1 tutorial, tier jump at 200m, full ramp by ~2.4k, overdrive after 10k. */
 export function obstacleDifficultyForDistance(distance) {
   const d = Math.max(0, Number(distance) || 0);
   let base;
@@ -101,6 +101,26 @@ export function obstacleDifficultyForDistance(distance) {
 /** @deprecated use OBSTACLE_TUTORIAL_END + OBSTACLE_DIFFICULTY_RAMP */
 const OBSTACLE_DIFFICULTY_DISTANCE = OBSTACLE_TUTORIAL_END + OBSTACLE_DIFFICULTY_RAMP;
 const MIN_SPAWN_Z = -130;
+/** Extra meters between spawn waves per m/s above this speed (late-game only). */
+const SPAWN_GAP_SPEED_STRETCH = 0.28;
+const SPAWN_GAP_SPEED_STRETCH_START = 24;
+const SPAWN_LOOKAHEAD_SPEED_FACTOR = 5.5;
+const SPAWN_LOOKAHEAD_MIN = -155;
+const OBSTACLE_SPAWN_NEAR_MARGIN = 3.5;
+const OBSTACLE_DROUGHT_DISTANCE = 14;
+const EARLY_GAME_DISTANCE = 450;
+const EARLY_DROUGHT_DISTANCE = 26;
+const NEAR_SPAWN_Z_START = -11;
+const NEAR_SPAWN_Z_MIN = -78;
+/** Normal spawns stay at least this many meters ahead (or speed × seconds, whichever is larger). */
+const MIN_SPAWN_AHEAD_Z = -32;
+const MIN_SPAWN_AHEAD_SECONDS = 2.2;
+const MIN_NEAR_PLAYER_OBSTACLES = 3;
+const EARLY_MIN_NEAR_OBSTACLES = 2;
+const WAVE_MIN_Z_SPACING = 7;
+const EARLY_WAVE_MIN_Z_SPACING = 10;
+const SPAWN_Z_SCAN_STEP = 1.1;
+const SPAWN_FAIL_Z_STEP = 6;
 
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const TEMP_POS = new THREE.Vector3();
@@ -440,6 +460,9 @@ export class ObstacleManager {
     this.spawnInterval = 1.8;
     this.nextZ = -55;
     this.difficulty = 0;
+    this.currentSpeed = BASE_RUN_SPEED;
+    this.runDistance = 0;
+    this.lastSpawnDistance = 0;
     this.gapManager = null;
     this._activeCount = 0;
 
@@ -464,7 +487,7 @@ export class ObstacleManager {
         MAX_PER_TYPE
       );
       mesh.castShadow = GRAPHICS.shadows;
-      mesh.frustumCulled = instancedFrustumCulled();
+      mesh.frustumCulled = false;
 
       if (SPIKE_TYPES.has(type)) {
         const baseMesh = new THREE.InstancedMesh(
@@ -473,7 +496,7 @@ export class ObstacleManager {
           MAX_PER_TYPE
         );
         baseMesh.castShadow = GRAPHICS.shadows;
-        baseMesh.frustumCulled = instancedFrustumCulled();
+        baseMesh.frustumCulled = false;
         scene.add(baseMesh);
         this.baseInstancedMeshes[type] = baseMesh;
       }
@@ -501,9 +524,83 @@ export class ObstacleManager {
     this.gapManager = gapManager;
   }
 
-  isBlockedPosition(z) {
-    if (this.gapManager?.isGapNear(z, GAP_MARGIN)) return true;
-    return this.hasObstacleNear(z, 5);
+  isEarlyGame(distance = this.runDistance) {
+    return distance < EARLY_GAME_DISTANCE;
+  }
+
+  minSpawnAheadZ(speed = this.currentSpeed) {
+    const ahead = Math.max(-MIN_SPAWN_AHEAD_Z, speed * MIN_SPAWN_AHEAD_SECONDS);
+    return -ahead;
+  }
+
+  isSpawnDistanceOk(z, speed = this.currentSpeed) {
+    return z <= this.minSpawnAheadZ(speed);
+  }
+
+  waveMinSpacing(distance = this.runDistance) {
+    return this.isEarlyGame(distance) ? EARLY_WAVE_MIN_Z_SPACING : WAVE_MIN_Z_SPACING;
+  }
+
+  isSpawnZTooClose(z, minSpacing = this.waveMinSpacing()) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
+      if (!obs.active) continue;
+      if (Math.abs(obs.z - z) < minSpacing) return true;
+    }
+    return false;
+  }
+
+  isBlockedPosition(z, nearMargin = OBSTACLE_SPAWN_NEAR_MARGIN) {
+    if (this.gapManager?.isObstacleSpawnBlocked(z)) return true;
+    return this.hasObstacleNear(z, nearMargin);
+  }
+
+  spawnLookaheadForSpeed(speed) {
+    return Math.max(SPAWN_LOOKAHEAD_MIN, Math.min(SPAWN_LOOKAHEAD_BASE, -speed * SPAWN_LOOKAHEAD_SPEED_FACTOR));
+  }
+
+  resolveSpawnZ() {
+    const minAhead = this.minSpawnAheadZ();
+    const scanEnd = Math.min(
+      MIN_SPAWN_Z,
+      NEAR_SPAWN_Z_MIN,
+      this.getFurthestZ() - 8
+    );
+
+    const trySpawnAt = (z) =>
+      this.isSpawnDistanceOk(z) &&
+      z >= scanEnd &&
+      !this.isBlockedPosition(z) &&
+      !this.isSpawnZTooClose(z);
+
+    const isCorridorFree = (z) => !this.hasObstacleNear(z, OBSTACLE_SPAWN_NEAR_MARGIN);
+    const corridorZ = this.gapManager?.findPostGapSpawnZ(isCorridorFree);
+    if (
+      corridorZ != null &&
+      this.isSpawnDistanceOk(corridorZ) &&
+      corridorZ >= scanEnd &&
+      !this.isBlockedPosition(corridorZ)
+    ) {
+      return corridorZ;
+    }
+
+    const plannedZ = Math.min(this.nextZ, minAhead);
+    if (trySpawnAt(plannedZ)) return plannedZ;
+
+    for (let z = minAhead; z >= scanEnd; z -= SPAWN_Z_SCAN_STEP) {
+      if (trySpawnAt(z)) return z;
+    }
+    return null;
+  }
+
+  countObstaclesNearPlayer(minZ = NEAR_SPAWN_Z_MIN, maxZ = 6) {
+    let count = 0;
+    for (let i = 0; i < this._activeCount; i++) {
+      const obs = this.obstacles[i];
+      if (!obs.active) continue;
+      if (obs.z >= minZ && obs.z <= maxZ) count++;
+    }
+    return count;
   }
 
   hasObstacleNear(z, margin = 4) {
@@ -568,7 +665,7 @@ export class ObstacleManager {
 
   acquireObstacle(type, lane, z) {
     const slot = this.allocSlot(type);
-    if (slot === null) return;
+    if (slot === null) return false;
 
     const def = OBSTACLE_DEFS[type];
     let entry = this.pool.pop();
@@ -607,38 +704,60 @@ export class ObstacleManager {
       this.obstacles.push(entry);
     }
     this._activeCount++;
+    return true;
   }
 
-  spawn() {
-    if (this.isBlockedPosition(this.nextZ)) {
-      this.nextZ -= 3;
-      this.spawnTimer = 0.25;
-      return;
+  spawn(options = {}) {
+    const { forceMinLanes = 0 } = options;
+    const spawnZ = this.resolveSpawnZ();
+    if (spawnZ === null || !this.isSpawnDistanceOk(spawnZ)) {
+      this.nextZ -= SPAWN_FAIL_Z_STEP;
+      this.spawnTimer = 0.12;
+      return false;
     }
 
-    const lanes = this.pickSpawnLanes();
+    this.nextZ = spawnZ;
+
+    const lanes = this.pickSpawnLanes(forceMinLanes);
+    let placed = 0;
     for (let i = 0; i < lanes.length; i++) {
       const type = this.pickTypeForWave(lanes.length, i);
-      this.acquireObstacle(type, lanes[i], this.nextZ);
+      if (this.acquireObstacle(type, lanes[i], spawnZ)) placed++;
+    }
+    if (placed === 0) {
+      this.nextZ -= SPAWN_FAIL_Z_STEP;
+      this.spawnTimer = 0.12;
+      return false;
     }
 
-    this.nextZ -= this.nextSpawnGap();
+    this.gapManager?.noteObstacleSpawnedAt(spawnZ);
+    this.lastSpawnDistance = this.runDistance;
+    this.nextZ = spawnZ - this.nextSpawnGap(this.currentSpeed);
     this.spawnTimer = this.spawnInterval;
+    return true;
   }
 
-  pickSpawnLanes() {
+  pickSpawnLanes(minCount = 0) {
     const d = this.difficulty;
+    const early = this.isEarlyGame();
     const roll = Math.random();
     let count = 1;
 
     if (d >= 0.1) {
-      const twoLaneChance = 0.28 + d * 0.62;
+      const twoLaneChance = early ? 0.08 + d * 0.18 : 0.52 + d * 0.42;
       if (roll < twoLaneChance) {
         count = 2;
-      } else if (d >= 0.4 && roll < twoLaneChance + 0.08 + d * 0.16) {
+      } else if (!early && d >= 0.15 && roll < twoLaneChance + 0.08 + d * 0.22) {
         count = 3;
       }
     }
+
+    if (early) {
+      count = Math.min(count, 2);
+      minCount = Math.min(minCount, 1);
+    }
+
+    count = Math.max(minCount, count);
 
     const picked = [];
     const pool = [0, 1, 2];
@@ -654,12 +773,18 @@ export class ObstacleManager {
     if (laneCount >= 3) {
       return ['low', 'gate', 'barrier'][index];
     }
+    if (laneCount === 2 && this.isEarlyGame()) {
+      return index === 0 ? 'barrier' : 'low';
+    }
     return this.pickType();
   }
 
-  nextSpawnGap() {
+  nextSpawnGap(speed = BASE_RUN_SPEED) {
     const tight = this.difficulty * 2.2;
-    return 4.8 + Math.random() * 4.2 - tight;
+    const speedStretch =
+      Math.max(0, speed - SPAWN_GAP_SPEED_STRETCH_START) * SPAWN_GAP_SPEED_STRETCH;
+    const earlyPad = this.isEarlyGame() ? 2.8 : 0;
+    return 4.8 + Math.random() * 4.2 - tight + speedStretch + earlyPad;
   }
 
   pickType() {
@@ -670,10 +795,9 @@ export class ObstacleManager {
       return r < 0.55 ? 'barrier' : 'low';
     }
 
-    if (d < 0.3) {
-      if (r < 0.28) return 'gate';
-      if (r < 0.64) return 'barrier';
-      return 'low';
+    if (d < 0.35) {
+      if (r < 0.12) return 'gate';
+      return r < 0.55 ? 'barrier' : 'low';
     }
 
     if (d < 0.55) {
@@ -758,12 +882,35 @@ export class ObstacleManager {
 
   update(dt, speed, distance) {
     this.difficulty = obstacleDifficultyForDistance(distance);
-    const spawnFloor = this.difficulty >= 1 ? 0.48 : 0.52;
-    this.spawnInterval = Math.max(spawnFloor, 1.35 - this.difficulty * 0.72);
+    this.currentSpeed = speed;
+    this.runDistance = distance;
+    const early = this.isEarlyGame(distance);
+    const spawnFloor = early ? 0.44 : this.difficulty >= 1 ? 0.3 : 0.34;
+    const spawnCeiling = early ? 1.28 : 1.12;
+    const spawnRamp = early ? 0.62 : 0.88;
+    this.spawnInterval = Math.max(spawnFloor, spawnCeiling - this.difficulty * spawnRamp);
 
     this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 || this.getFurthestZ() > SPAWN_LOOKAHEAD) {
-      this.spawn();
+    const corridorUrgent = this.gapManager?.hasPendingPostGapCorridors() ?? false;
+    const droughtDistance = early ? EARLY_DROUGHT_DISTANCE : OBSTACLE_DROUGHT_DISTANCE;
+    const drought = distance - this.lastSpawnDistance >= droughtDistance;
+    const minNear = early ? EARLY_MIN_NEAR_OBSTACLES : MIN_NEAR_PLAYER_OBSTACLES;
+    const sparseNear =
+      !early && this.difficulty >= 0.1 && this.countObstaclesNearPlayer() < minNear;
+    const lookahead = this.spawnLookaheadForSpeed(speed);
+    const minLanes = !early && (drought || sparseNear) && this.difficulty >= 0.1 ? 2 : 0;
+    const shouldSpawn =
+      this.spawnTimer <= 0 ||
+      corridorUrgent ||
+      (!early && drought) ||
+      sparseNear ||
+      this.getFurthestZ() > lookahead;
+
+    if (shouldSpawn) {
+      if (!this.spawn({ forceMinLanes: minLanes })) {
+        this.nextZ = this.minSpawnAheadZ(speed) - 4;
+        this.spawn({ forceMinLanes: minLanes });
+      }
     }
 
     const move = speed * dt;
@@ -796,6 +943,9 @@ export class ObstacleManager {
     this.spawnTimer = 0.5;
     this.nextZ = -55;
     this.difficulty = 0;
+    this.currentSpeed = BASE_RUN_SPEED;
+    this.runDistance = 0;
+    this.lastSpawnDistance = 0;
     this.prefill();
   }
 }
