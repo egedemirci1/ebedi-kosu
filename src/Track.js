@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRAPHICS } from './graphicsProfile.js';
+import { GRAPHICS, applyCanvasTextureSampling } from './graphicsProfile.js';
 import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 const SEGMENT_LENGTH = 20;
@@ -57,7 +57,7 @@ function createWallTexture() {
   ctx.fillRect(88, 0, 40, 256);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  applyCanvasTextureSampling(texture);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   return texture;
@@ -156,11 +156,9 @@ function createFloorSegmentTexture() {
   ctx.fillRect(0, 0, 256, 512);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  applyCanvasTextureSampling(texture);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
