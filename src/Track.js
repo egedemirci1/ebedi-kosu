@@ -219,7 +219,8 @@ export class Track {
     this.floorTopMat = GRAPHICS.useLambert
       ? new THREE.MeshBasicMaterial({
           map: floorTexture,
-          color: 0xddddee,
+          // Basic = mobilde en ucuz (ışık hesabı yok); eski #ddddee çok parlaktı
+          color: 0xb8b2cc,
           fog: true,
           side: THREE.DoubleSide,
         })
