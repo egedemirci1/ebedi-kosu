@@ -672,6 +672,7 @@ canvas {
 .best-score {
   font-size: 0.95rem;
   color: #88ccff;
+  margin-top: 16px;
   margin-bottom: 16px;
   min-height: 1.2em;
 }
@@ -1178,6 +1179,40 @@ canvas {
   color: #8888aa;
 }
 
+.game-over-stat-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.game-over-stat-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.game-over-stat-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.stat-distance .game-over-stat-icon {
+  color: #a8f0ff;
+  filter: drop-shadow(0 0 6px rgba(120, 220, 255, 0.35));
+}
+
+.stat-coins .game-over-stat-icon {
+  color: #ffd866;
+  filter: drop-shadow(0 0 6px rgba(255, 200, 60, 0.35));
+}
+
+.stat-record .game-over-stat-icon {
+  color: #c8b8ff;
+  filter: drop-shadow(0 0 6px rgba(160, 130, 255, 0.3));
+}
+
 .game-over-stat-value {
   font-size: 1.35rem;
   font-weight: 700;
@@ -1265,11 +1300,14 @@ kbd {
   color: #ccccee;
 }
 
-.mobile-controls {
-  display: none;
+.desktop-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.mobile-controls-title {
+.controls-title {
+  margin: 0;
   font-size: 1.2rem;
   font-weight: 800;
   color: #ffcc66;
@@ -1277,6 +1315,10 @@ kbd {
   text-transform: uppercase;
   text-align: center;
   text-shadow: 0 0 14px rgba(255, 204, 102, 0.4);
+}
+
+.mobile-controls {
+  display: none;
 }
 
 .mobile-hint-list {
@@ -1754,13 +1796,29 @@ button.shop-backdrop:hover {
     left: auto;
     width: min(100%, 320px);
     max-width: 320px;
+    max-height: min(46vh, 280px);
     margin: 8px auto 16px;
     padding: 12px 14px;
     z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    pointer-events: auto;
+  }
+
+  .leaderboard-title {
+    flex-shrink: 0;
   }
 
   .leaderboard-list {
     gap: 5px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+    padding-right: 2px;
   }
 
   .leaderboard-list li {
@@ -1769,11 +1827,11 @@ button.shop-backdrop:hover {
 
   #start-screen #start-btn {
     margin-top: 4px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
   }
 
   #start-screen #best-score {
-    margin-top: 0;
+    margin-top: 12px;
     margin-bottom: 16px;
     font-size: 0.88rem;
   }
@@ -1797,7 +1855,7 @@ button.shop-backdrop:hover {
   .controls-info kbd {
     display: none;
   }
-  .controls-info > div:not(.mobile-controls) {
+  .desktop-controls {
     display: none;
   }
   .mobile-controls {
@@ -1808,7 +1866,7 @@ button.shop-backdrop:hover {
     width: 100%;
   }
 
-  .mobile-controls-title {
+  .mobile-controls .controls-title {
     font-size: 1.35rem;
   }
 

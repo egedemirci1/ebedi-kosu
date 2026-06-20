@@ -797,7 +797,6 @@ export class Game {
     }
     if (!this.runToken) {
       if (import.meta.env.DEV) console.log('[leaderboard] skip submit — missing run token');
-      this.setGameOverScoreMsg('Skor tablosu şu an kapalı — skor kaydedilemedi.', true);
       return;
     }
     const result = await submitScore(
@@ -809,15 +808,9 @@ export class Game {
     this.runToken = null;
     if (import.meta.env.DEV) console.log('[leaderboard] submit result', result);
     if (result.ok) {
-      this.setGameOverScoreMsg('Skor tablosuna kaydedildi.');
       this.refreshLeaderboard();
       return;
     }
-    const reason = result.error === 'rate_limited' ? 'çok fazla deneme' : result.error;
-    this.setGameOverScoreMsg(
-      reason ? `Skor tablosuna yazılamadı (${reason}).` : 'Skor tablosuna yazılamadı.',
-      true
-    );
   }
 
   gameOver(reason = 'caught') {
