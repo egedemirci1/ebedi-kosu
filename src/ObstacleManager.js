@@ -73,6 +73,13 @@ function playerVerticalBounds(player) {
 const SPAWN_LOOKAHEAD_BASE = -110;
 /** Before this distance: tutorial mix only (barrier + low). */
 const OBSTACLE_TUTORIAL_END = 200;
+/**
+ * Global spawn-density tuning (1 = default). Scales effective difficulty for spawn
+ * interval, wave spacing, lane count, and type mix without changing the distance curve.
+ */
+const OBSTACLE_DENSITY_SCALE = 0.95;
+/** Extra meters between spawn waves on top of difficulty-based spacing. */
+const OBSTACLE_SPAWN_GAP_BIAS = 0.3;
 /** 200m → 2.4k ramps difficulty from tier I to full. */
 const OBSTACLE_DIFFICULTY_RAMP = 2200;
 const OBSTACLE_OVERDRIVE_DISTANCE = 10000;
@@ -107,9 +114,9 @@ const SPAWN_GAP_SPEED_STRETCH_START = 24;
 const SPAWN_LOOKAHEAD_SPEED_FACTOR = 5.5;
 const SPAWN_LOOKAHEAD_MIN = -155;
 const OBSTACLE_SPAWN_NEAR_MARGIN = 3.5;
-const OBSTACLE_DROUGHT_DISTANCE = 14;
+const OBSTACLE_DROUGHT_DISTANCE = 15;
 const EARLY_GAME_DISTANCE = 450;
-const EARLY_DROUGHT_DISTANCE = 26;
+const EARLY_DROUGHT_DISTANCE = 28;
 const NEAR_SPAWN_Z_START = -11;
 const NEAR_SPAWN_Z_MIN = -78;
 /** Normal spawns stay at least this many meters ahead (or speed × seconds, whichever is larger). */
@@ -234,6 +241,20 @@ function createStoneTexture(variant = 'barrier') {
     glow.addColorStop(1, 'rgba(200, 160, 255, 0.55)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 190, 256, 66);
+
+    const topCore = ctx.createRadialGradient(128, 112, 4, 128, 112, 58);
+    topCore.addColorStop(0, '#d8c4ff');
+    topCore.addColorStop(0.4, '#9a82d8');
+    topCore.addColorStop(0.72, '#524878');
+    topCore.addColorStop(1, 'rgba(26, 22, 38, 0)');
+    ctx.fillStyle = topCore;
+    ctx.fillRect(70, 54, 116, 116);
+
+    ctx.strokeStyle = 'rgba(200, 175, 255, 0.55)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(128, 112, 34, 24, 0, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   if (isSpikeBase) {
@@ -793,7 +814,7 @@ export class ObstacleManager {
     const speedStretch =
       Math.max(0, speed - SPAWN_GAP_SPEED_STRETCH_START) * SPAWN_GAP_SPEED_STRETCH;
     const earlyPad = this.isEarlyGame() ? 2.8 : 0;
-    return 4.8 + Math.random() * 4.2 - tight + speedStretch + earlyPad;
+    return 4.8 + Math.random() * 4.2 - tight + speedStretch + earlyPad + OBSTACLE_SPAWN_GAP_BIAS;
   }
 
   pickType() {
@@ -890,7 +911,7 @@ export class ObstacleManager {
   }
 
   update(dt, speed, distance) {
-    this.difficulty = obstacleDifficultyForDistance(distance);
+    this.difficulty = obstacleDifficultyForDistance(distance) * OBSTACLE_DENSITY_SCALE;
     this.currentSpeed = speed;
     this.runDistance = distance;
     const early = this.isEarlyGame(distance);

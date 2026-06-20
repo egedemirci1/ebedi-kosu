@@ -12,8 +12,9 @@ const GAP_DIFFICULTY_DISTANCE = 3500;
 const MIN_BRIDGE_GAP_WIDTH = 5.2;
 const MAX_BRIDGE_GAP_WIDTH = 7.8;
 /** Planks extend past gap edges so no void shows at entry/exit. */
-const BRIDGE_DECK_OVERHANG = 0.55;
-const BRIDGE_FLOOR_PAD = 0.28;
+const BRIDGE_DECK_OVERHANG = 1.2;
+/** Half overhang — walkable lip at bridge entry/exit (strafe on/off deck). */
+const BRIDGE_EDGE_PAD = BRIDGE_DECK_OVERHANG / 2;
 /** Extra obstacle-free clearance at bridge entry/exit (walkable deck). */
 const BRIDGE_OBSTACLE_EDGE_PAD = 1.5;
 
@@ -338,12 +339,13 @@ export class GapManager {
       const gap = this.gaps[i];
       if (!gap.active) continue;
 
-      if (gap.type === GAP_TYPE_BRIDGE && laneIndex === gap.bridgeLane) {
-        if (
-          worldZ >= gap.startZ - BRIDGE_FLOOR_PAD &&
-          worldZ <= gap.endZ + BRIDGE_FLOOR_PAD
-        ) {
-          return true;
+      if (gap.type === GAP_TYPE_BRIDGE) {
+        const { startZ, endZ, bridgeLane } = gap;
+        if (worldZ >= startZ - BRIDGE_EDGE_PAD && worldZ <= endZ + BRIDGE_EDGE_PAD) {
+          if (laneIndex === bridgeLane) return true;
+          if (worldZ <= startZ + BRIDGE_EDGE_PAD || worldZ >= endZ - BRIDGE_EDGE_PAD) {
+            return true;
+          }
         }
       }
 

@@ -195,6 +195,16 @@ describe('GapManager', () => {
       expect(gaps.hasFloorAt(-100, 2)).toBe(false);
     });
 
+    it('allows side lanes on bridge entry and exit lips only', () => {
+      const entry = insertBridgeGap(gaps, -100, 6, 1);
+      const { startZ, endZ } = entry;
+
+      expect(gaps.hasFloorAt(-100, 0)).toBe(false);
+      expect(gaps.hasFloorAt(-100, 2)).toBe(false);
+      expect(gaps.hasFloorAt(startZ + 0.1, 0)).toBe(true);
+      expect(gaps.hasFloorAt(endZ - 0.1, 2)).toBe(true);
+    });
+
     it('returns floor outside bridge gap span for every lane', () => {
       insertBridgeGap(gaps, -100, 6, 2);
       expect(gaps.hasFloorAt(-50, 0)).toBe(true);
