@@ -42,25 +42,36 @@ describe('Game integration', () => {
       expect(game.shakeIntensity).toBeGreaterThan(0);
     });
 
-    it('raises danger to half after the first hit', () => {
+    it('raises danger by 40% after the first hit', () => {
       game.applyHit(0);
-      expect(game.creature.dangerLevel).toBeCloseTo(0.5, 2);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.4, 2);
     });
 
-    it('catches the player when two hits fill the danger bar', () => {
+    it('catches the player on the third hit (40 + 40 + 40)', () => {
       game.applyHit(0);
+      game.applyHit(0);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.8, 2);
+      expect(game.creature.hasCaught()).toBe(false);
       game.applyHit(0);
       expect(game.creature.dangerLevel).toBe(1);
       expect(game.creature.hasCaught()).toBe(true);
     });
 
-    it('does not catch on the second hit if danger had recovered', () => {
+    it('adds another 40% on second hit after partial decay', () => {
       game.applyHit(0);
-      game.creature.lungeTimer = 0;
-      game.creature.chaseDistance = game.creature.chaseDistanceForDanger(0.3);
-      game.creature.targetDistance = game.creature.farDistance;
+      game.creature.pressure = 0.25;
+      game.creature.chaseDistance = game.creature.chaseDistanceForDanger(0.25);
+      game.creature.targetDistance = game.creature.chaseDistance;
       game.applyHit(0);
-      expect(game.creature.dangerLevel).toBeCloseTo(0.8, 1);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.65, 2);
+      expect(game.creature.hasCaught()).toBe(false);
+    });
+
+    it('allows a fresh 40% after full recovery', () => {
+      game.applyHit(0);
+      game.creature.pressure = 0;
+      game.applyHit(0);
+      expect(game.creature.dangerLevel).toBeCloseTo(0.4, 2);
       expect(game.creature.hasCaught()).toBe(false);
     });
   });
@@ -197,13 +208,13 @@ describe('Game integration', () => {
     it('does not pull creature closer when speed booster is active', () => {
       game.distance = 250;
       game.boosters.activate('speed');
-      game.creature.chaseDistance = 14;
-      game.creature.targetDistance = 14;
+      game.creature.chaseDistance = 11;
+      game.creature.targetDistance = 11;
       game.player.isStumbling = false;
 
       for (let i = 0; i < 40; i++) game.update(0.05);
 
-      expect(game.creature.targetDistance).toBe(14);
+      expect(game.creature.targetDistance).toBe(11);
       expect(game.creature.dangerLevel).toBeLessThan(0.05);
     });
 

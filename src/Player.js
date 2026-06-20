@@ -24,6 +24,9 @@ const TRAIL_SPACING = 0.35;
 const TRAIL_STAND_Y = 0.32;
 const TRAIL_SLIDE_Y = 0.14;
 const SLIDE_SPARK_COUNT = 3;
+const TRAIL_RUN_COLOR = 0x44ccff;
+const TRAIL_RUN_SPEED_COLOR = 0xb8430a;
+const TRAIL_SLIDE_COLOR = 0x88eeff;
 
 export class Player {
   constructor(scene) {
@@ -48,6 +51,7 @@ export class Player {
     this.slideSpawnTimer = 0;
     this._slideStartPending = false;
     this.isGhostVisual = false;
+    this.isSpeedVisual = false;
     this.isSliding = false;
     this.slideTimer = 0;
     this.slideBlend = 0;
@@ -213,8 +217,12 @@ export class Player {
     if (active) {
       this.bodyMat.transparent = true;
       this.headMat.transparent = true;
-      this.bodyMat.opacity = 0.55;
-      this.headMat.opacity = 0.55;
+      this.bodyMat.depthWrite = false;
+      this.headMat.depthWrite = false;
+      this.bodyMat.side = THREE.DoubleSide;
+      this.headMat.side = THREE.DoubleSide;
+      this.bodyMat.opacity = 0.42;
+      this.headMat.opacity = 0.42;
       this.glow.material.color.setHex(0xaaeeff);
       this.glow.material.opacity = 0.65;
     } else {
@@ -222,18 +230,30 @@ export class Player {
       this.headMat.opacity = 1;
       this.bodyMat.transparent = false;
       this.headMat.transparent = false;
+      this.bodyMat.depthWrite = true;
+      this.headMat.depthWrite = true;
+      this.bodyMat.side = THREE.FrontSide;
+      this.headMat.side = THREE.FrontSide;
       this.glow.material.color.setHex(0x44ccff);
       this.glow.material.opacity = 0.65;
     }
     this.syncGlowVisibility();
   }
 
+  setSpeedVisual(active) {
+    this.isSpeedVisual = active;
+  }
+
+  trailRunColor() {
+    return this.isSpeedVisual ? TRAIL_RUN_SPEED_COLOR : TRAIL_RUN_COLOR;
+  }
+
+  trailSlideColor() {
+    return this.isSpeedVisual ? TRAIL_RUN_SPEED_COLOR : TRAIL_SLIDE_COLOR;
+  }
+
   syncGlowVisibility() {
-    this.glow.visible =
-      this.isGhostVisual &&
-      !this.isStumbling &&
-      this.wallBounceTimer <= 0 &&
-      this.slideBlend < 0.92;
+    this.glow.visible = false;
   }
 
   trailFeetY(slideBlend = 0) {
@@ -276,6 +296,7 @@ export class Player {
     this.slideTimer = 0;
     this.slideBlend = 0;
     this.setGhostVisual(false);
+    this.setSpeedVisual(false);
     this.resetTrails();
   }
 
@@ -307,7 +328,9 @@ export class Player {
     trail.y = this.trailFeetY(slideBlend);
     trail.z = TRAIL_SPACING * 0.45;
     trail.mesh.visible = true;
-    trail.mesh.material.color.setHex(kind === 'slide' ? 0x88eeff : 0x44ccff);
+    trail.mesh.material.color.setHex(
+      kind === 'slide' ? this.trailSlideColor() : this.trailRunColor()
+    );
   }
 
   spawnSlideSpark() {
@@ -321,6 +344,7 @@ export class Player {
     spark.y = this.y + TRAIL_SLIDE_Y + 0.02;
     spark.z = 0.15 + Math.random() * 0.12;
     spark.drift = (Math.random() - 0.5) * 0.35;
+    spark.mesh.material.color.setHex(this.trailSlideColor());
     spark.mesh.visible = true;
   }
 

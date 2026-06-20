@@ -13,9 +13,10 @@ export const OVERDRIVE_RAMP_DISTANCE = 12000;
 export const MAX_SPEED_MULTIPLIER = 1.3;
 export const RUN_PHYSICS_TOLERANCE = 1.2;
 
-/** Full danger bar (100%) after this many clean hits with no recovery between them. */
-export const HITS_TO_CATCH = 2;
-export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
+/** Each hit adds this much to the danger bar (0–1). Three hits → 120% capped at 100%. */
+export const DANGER_PER_HIT = 0.4;
+/** @deprecated use DANGER_PER_HIT; kept for docs/tests referencing hit count. */
+export const HITS_TO_CATCH = 1 / DANGER_PER_HIT;
 
 /**
  * Discrete speed jumps — sync with ChaseMusic tiers (1k, 3k) and disco at 5k.

@@ -1,15 +1,25 @@
 import * as THREE from 'three';
 import { createSurfaceMaterial } from './surfaceMaterial.js';
 
+/** Mesh visibility tracks bar fill — noticeable from ~40% danger. */
+const VISIBILITY_START = 0.35;
+const VISIBILITY_FULL = 0.75;
+/** Clean-run pressure decay (per second). */
+const PRESSURE_DECAY_RATE = 0.05;
+
 export class Creature {
   constructor(scene) {
     this.group = new THREE.Group();
-    this.farDistance = 14;
-    this.chaseDistance = 14;
-    this.targetDistance = 14;
+    this.group.frustumCulled = false;
+    this.farDistance = 11;
+    this.chaseDistance = 11;
+    this.targetDistance = 11;
     this.minDistance = 1.8;
     this.lungeTimer = 0;
     this.animTime = 0;
+    this.pressure = 0;
+    this.fadeMats = [];
+    this.eyeMats = [];
 
     const bodyMat = createSurfaceMaterial({
       color: 0x1a0818,
@@ -17,18 +27,31 @@ export class Creature {
       emissiveIntensity: 0.6,
       roughness: 0.9,
       fog: false,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
     });
+    this.registerFadeMat(bodyMat);
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 1.8, 4, 8), bodyMat);
     torso.position.y = 2.2;
     this.group.add(torso);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), bodyMat.clone());
+    const headMat = bodyMat.clone();
+    this.registerFadeMat(headMat);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), headMat);
     head.position.y = 3.5;
     head.scale.set(1.1, 1, 0.9);
     this.group.add(head);
 
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1133, fog: true });
+    const eyeMat = new THREE.MeshBasicMaterial({
+      color: 0xff1133,
+      fog: false,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.eyeMats.push(eyeMat);
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), eyeMat);
       eye.position.set(side * 0.22, 3.55, 0.42);
@@ -36,9 +59,11 @@ export class Creature {
     }
 
     for (let i = 0; i < 4; i++) {
+      const tentacleMat = bodyMat.clone();
+      this.registerFadeMat(tentacleMat);
       const tentacle = new THREE.Mesh(
         new THREE.CylinderGeometry(0.06, 0.02, 1.2, 4),
-        bodyMat.clone()
+        tentacleMat
       );
       tentacle.position.set(
         Math.sin(i * 1.5) * 0.5,
@@ -56,6 +81,14 @@ export class Creature {
     this.head = head;
     scene.add(this.group);
     this.group.position.set(0, 0, this.chaseDistance);
+    this.updateVisibility();
+  }
+
+  registerFadeMat(mat) {
+    mat.transparent = true;
+    mat.opacity = 0;
+    mat.depthWrite = false;
+    this.fadeMats.push(mat);
   }
 
   get distance() {
@@ -63,8 +96,7 @@ export class Creature {
   }
 
   get dangerLevel() {
-    const range = this.farDistance - this.minDistance;
-    return Math.max(0, Math.min(1, 1 - (this.chaseDistance - this.minDistance) / range));
+    return this.pressure;
   }
 
   chaseDistanceForDanger(fraction) {
@@ -72,24 +104,58 @@ export class Creature {
     return this.minDistance + range * (1 - Math.max(0, Math.min(1, fraction)));
   }
 
+  visibilityForPressure(pressure = this.pressure) {
+    if (pressure <= VISIBILITY_START) return 0;
+    const t = Math.min(1, (pressure - VISIBILITY_START) / (VISIBILITY_FULL - VISIBILITY_START));
+    return t * t * (3 - 2 * t);
+  }
+
+  updateVisibility() {
+    const opacity = this.visibilityForPressure();
+    this.group.visible = opacity > 0.02;
+
+    for (const mat of this.fadeMats) {
+      mat.opacity = opacity * 0.94;
+      mat.depthWrite = opacity > 0.88;
+    }
+
+    const eyeOpacity =
+      opacity <= 0 ? 0 : Math.min(1, 0.25 + (opacity - 0.08) * 1.15);
+    for (const mat of this.eyeMats) {
+      mat.opacity = eyeOpacity;
+    }
+  }
+
+  addHitPressure(amount) {
+    this.pressure = Math.min(1, this.pressure + amount);
+    if (this.pressure >= 1) {
+      this.forceCatch();
+      return;
+    }
+    this.applyHitDanger(this.pressure);
+  }
+
   /**
-   * Çarpma anında canavarı belirli tehlike seviyesine yaklaştırır; temiz koşuda geri açılır.
+   * Çarpma anında canavarı bar seviyesine yaklaştırır; temiz koşuda geri açılır.
    * @param {number} fraction 0–1 arası tehlike
    */
   applyHitDanger(fraction) {
-    const hitDistance = this.chaseDistanceForDanger(fraction);
-    this.chaseDistance = Math.min(this.chaseDistance, hitDistance);
-    this.targetDistance = hitDistance;
-    this.lungeTimer = 0.85;
+    this.pressure = Math.max(this.pressure, Math.min(1, fraction));
+    this.targetDistance = this.chaseDistanceForDanger(this.pressure);
+    this.chaseDistance = this.targetDistance;
+    this.lungeTimer = 0.55;
     this.syncGroupZ();
+    this.updateVisibility();
   }
 
-  /** İkinci çarpma — yakalama mesafesine kilitler. */
+  /** Tehlike %100 — yakalama mesafesine kilitler. */
   forceCatch() {
+    this.pressure = 1;
     this.chaseDistance = this.minDistance;
     this.targetDistance = this.minDistance;
     this.lungeTimer = 0;
     this.syncGroupZ();
+    this.updateVisibility();
   }
 
   lunge(amount = 2.5) {
@@ -105,17 +171,20 @@ export class Creature {
   update(dt, playerX, playerStumbling) {
     this.animTime += dt;
 
-    const catchUpRate = playerStumbling ? 6 : 1.2;
-    const baseTarget = Math.max(this.minDistance, playerStumbling ? 11 : this.farDistance);
+    const catchUpRate =
+      this.lungeTimer > 0 ? 10 : playerStumbling ? 6 : 2.2;
 
     if (this.lungeTimer > 0) {
       this.lungeTimer -= dt;
-      this.targetDistance = Math.min(this.targetDistance, baseTarget);
-    } else {
-      this.targetDistance = baseTarget;
     }
 
-    this.chaseDistance += (this.targetDistance - this.chaseDistance) * dt * catchUpRate;
+    if (!playerStumbling && this.lungeTimer <= 0) {
+      this.pressure = Math.max(0, this.pressure - dt * PRESSURE_DECAY_RATE);
+    }
+
+    this.targetDistance = this.chaseDistanceForDanger(this.pressure);
+    const blend = Math.min(1, catchUpRate * dt);
+    this.chaseDistance += (this.targetDistance - this.chaseDistance) * blend;
 
     const t = this.animTime;
     const sway = Math.sin(t * 4) * 0.3;
@@ -134,17 +203,23 @@ export class Creature {
           0.4 + child.userData.phase * 0.2 + Math.sin(t * 8 + child.userData.phase) * 0.25;
       }
     });
+
+    this.updateVisibility();
   }
 
   hasCaught() {
-    return this.chaseDistance <= this.minDistance;
+    return this.pressure >= 1;
   }
 
   reset() {
+    this.pressure = 0;
     this.chaseDistance = this.farDistance;
     this.targetDistance = this.farDistance;
     this.lungeTimer = 0;
     this.animTime = 0;
     this.group.position.set(0, 0, this.farDistance);
+    this.updateVisibility();
   }
 }
+
+export { VISIBILITY_START, VISIBILITY_FULL };

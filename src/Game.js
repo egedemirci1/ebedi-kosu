@@ -642,8 +642,7 @@ export class Game {
       this.sfx.playObstacleHit();
     }
     this.player.stumble(0.6, wallSide);
-    const newDanger = Math.min(1, this.creature.dangerLevel + DANGER_PER_HIT);
-    this.creature.applyHitDanger(newDanger);
+    this.creature.addHitPressure(DANGER_PER_HIT);
     this.shakeIntensity = 0.3;
   }
 
@@ -868,6 +867,7 @@ export class Game {
       const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
       this.player.update(dt, this.gaps.hasFloorAt(0, this.player.laneIndex), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
+      this.player.setSpeedVisual(this.boosters.isSpeedActive());
 
       if (this.player.consumeSlideStart()) {
         this.sfx.playSlide();
