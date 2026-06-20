@@ -8,6 +8,9 @@ import {
   GAP_TYPE_BRIDGE,
   MIN_BRIDGE_GAP_WIDTH,
   MAX_BRIDGE_GAP_WIDTH,
+  OBSTACLE_GAP_APPROACH_MARGIN,
+  OBSTACLE_GAP_EXIT_MARGIN,
+  BRIDGE_OBSTACLE_EDGE_PAD,
 } from '../../src/GapManager.js';
 import { createScene, insertGap, insertBridgeGap } from '../helpers/fixtures.js';
 
@@ -210,6 +213,18 @@ describe('GapManager', () => {
         expect(w).toBeGreaterThanOrEqual(MIN_BRIDGE_GAP_WIDTH);
         expect(w).toBeLessThanOrEqual(MAX_BRIDGE_GAP_WIDTH + 0.001);
       }
+    });
+
+    it('reserves extra obstacle-free margin at bridge entry and exit', () => {
+      const entry = insertBridgeGap(gaps, -50, 6, 1);
+      const { startZ, endZ } = entry;
+      const approach = OBSTACLE_GAP_APPROACH_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD;
+      const exit = OBSTACLE_GAP_EXIT_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD;
+
+      expect(gaps.isObstacleSpawnBlocked(startZ - approach + 0.2)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(startZ - approach - 0.2)).toBe(false);
+      expect(gaps.isObstacleSpawnBlocked(endZ + exit - 0.2)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(endZ + exit + 0.2)).toBe(false);
     });
   });
 });

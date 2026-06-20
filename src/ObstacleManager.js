@@ -135,7 +135,7 @@ function createStoneTexture(variant = 'barrier') {
   const ctx = canvas.getContext('2d');
 
   const palettes = {
-    barrier: { a: '#1e1828', b: '#322c42', c: '#4a4260', d: '#14101c' },
+    barrier: { a: '#5a5488', b: '#726a9a', c: '#8a82b0', d: '#484068' },
     low: { a: '#686098', b: '#8278b0', c: '#9c94c8', d: '#504870' },
     tall: { a: '#605888', b: '#7a70a0', c: '#948cb8', d: '#484068' },
     overhead: { a: '#1a1626', b: '#2e2840', c: '#464060', d: '#100e18' },
@@ -180,7 +180,11 @@ function createStoneTexture(variant = 'barrier') {
   }
   ctx.globalAlpha = 1;
 
-  ctx.strokeStyle = isSpike ? 'rgba(80, 70, 120, 0.22)' : 'rgba(10, 8, 16, 0.55)';
+  ctx.strokeStyle = isSpike
+    ? 'rgba(80, 70, 120, 0.22)'
+    : variant === 'barrier'
+      ? 'rgba(70, 58, 100, 0.22)'
+      : 'rgba(10, 8, 16, 0.55)';
   ctx.lineWidth = 1.2;
   for (let i = 0; i < (isSpike ? 5 : 9); i++) {
     ctx.beginPath();
@@ -205,17 +209,22 @@ function createStoneTexture(variant = 'barrier') {
   }
 
   if (variant === 'barrier') {
-    ctx.strokeStyle = 'rgba(160, 130, 220, 0.35)';
-    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(128, 52);
     ctx.lineTo(168, 148);
     ctx.lineTo(128, 204);
     ctx.lineTo(88, 148);
     ctx.closePath();
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(120, 90, 180, 0.12)';
+    const darkCore = ctx.createRadialGradient(128, 148, 4, 128, 148, 78);
+    darkCore.addColorStop(0, '#000000');
+    darkCore.addColorStop(0.45, '#050308');
+    darkCore.addColorStop(1, '#0c0612');
+    ctx.fillStyle = darkCore;
     ctx.fill();
+
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 5;
+    ctx.stroke();
   }
 
   if (variant === 'gate' || variant === 'overhead') {
@@ -269,7 +278,7 @@ function createStoneTexture(variant = 'barrier') {
 
 function createStoneMaterial(variant) {
   const emissiveByVariant = {
-    barrier: { color: 0x443366, intensity: 0.1, tint: 0xffffff, roughness: 0.9 },
+    barrier: { color: 0x665588, intensity: 0.1, tint: 0xe8e2ff, roughness: 0.78 },
     low: { color: 0x9988dd, intensity: 0.22, tint: 0xe8e2ff, roughness: 0.68 },
     tall: { color: 0x8877cc, intensity: 0.18, tint: 0xe0daf8, roughness: 0.72 },
     spikeBase: { color: 0x443355, intensity: 0.06, tint: 0xb0a8c8, roughness: 0.88 },

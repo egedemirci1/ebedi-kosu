@@ -14,6 +14,8 @@ const MAX_BRIDGE_GAP_WIDTH = 7.8;
 /** Planks extend past gap edges so no void shows at entry/exit. */
 const BRIDGE_DECK_OVERHANG = 0.55;
 const BRIDGE_FLOOR_PAD = 0.28;
+/** Extra obstacle-free clearance at bridge entry/exit (walkable deck). */
+const BRIDGE_OBSTACLE_EDGE_PAD = 1.5;
 
 const GAP_START_DISTANCE = 80;
 const MIN_GAP_WIDTH = 2.4;
@@ -361,14 +363,28 @@ export class GapManager {
     return false;
   }
 
+  _obstacleSpawnMargins(gap) {
+    if (gap.type !== GAP_TYPE_BRIDGE) {
+      return {
+        approach: OBSTACLE_GAP_APPROACH_MARGIN,
+        exit: OBSTACLE_GAP_EXIT_MARGIN,
+      };
+    }
+    return {
+      approach: OBSTACLE_GAP_APPROACH_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD,
+      exit: OBSTACLE_GAP_EXIT_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD,
+    };
+  }
+
   isObstacleSpawnBlocked(worldZ) {
     for (let i = 0; i < this._activeCount; i++) {
       const gap = this.gaps[i];
       if (!gap.active) continue;
-      if (worldZ >= gap.startZ - OBSTACLE_GAP_APPROACH_MARGIN && worldZ <= gap.endZ) {
+      const { approach, exit } = this._obstacleSpawnMargins(gap);
+      if (worldZ >= gap.startZ - approach && worldZ <= gap.endZ) {
         return true;
       }
-      if (worldZ > gap.endZ && worldZ <= gap.endZ + OBSTACLE_GAP_EXIT_MARGIN) {
+      if (worldZ > gap.endZ && worldZ <= gap.endZ + exit) {
         return true;
       }
     }
@@ -617,4 +633,5 @@ export {
   BRIDGE_SPAWN_CHANCE,
   MIN_BRIDGE_GAP_WIDTH,
   MAX_BRIDGE_GAP_WIDTH,
+  BRIDGE_OBSTACLE_EDGE_PAD,
 };

@@ -5,7 +5,7 @@ import { createSurfaceMaterial } from './surfaceMaterial.js';
 const VISIBILITY_START = 0.35;
 const VISIBILITY_FULL = 0.75;
 /** Clean-run pressure decay (per second). */
-const PRESSURE_DECAY_RATE = 0.05;
+const PRESSURE_DECAY_RATE = 0.06;
 
 export class Creature {
   constructor(scene) {
