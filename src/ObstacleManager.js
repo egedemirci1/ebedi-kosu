@@ -252,9 +252,13 @@ function createStoneTexture(variant = 'barrier') {
 
     ctx.strokeStyle = 'rgba(200, 175, 255, 0.55)';
     ctx.lineWidth = 2.5;
+    ctx.save();
+    ctx.translate(128, 112);
+    ctx.scale(1, 24 / 34);
     ctx.beginPath();
-    ctx.ellipse(128, 112, 34, 24, 0, 0, Math.PI * 2);
+    ctx.arc(0, 0, 34, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
   }
 
   if (isSpikeBase) {

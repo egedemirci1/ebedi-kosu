@@ -76,6 +76,7 @@ export class GapManager {
     this._activeCount = 0;
     this.currentSpeed = DEFAULT_RUN_SPEED;
     this.runDistance = 0;
+    this._floorMaskDirty = true;
 
     this.emberMats = [
       new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true, fog: false }),
@@ -130,6 +131,16 @@ export class GapManager {
 
   setTrack(track) {
     this.track = track;
+  }
+
+  markFloorMaskDirty() {
+    this._floorMaskDirty = true;
+  }
+
+  consumeFloorMaskDirty() {
+    const dirty = this._floorMaskDirty;
+    this._floorMaskDirty = false;
+    return dirty;
   }
 
   resolveCliffEdges(gapZ, width) {
@@ -491,6 +502,7 @@ export class GapManager {
     }
     this._activeCount++;
     entry.postGapObstacleWaves = POST_GAP_OBSTACLE_WAVES;
+    this.markFloorMaskDirty();
 
     return entry;
   }
@@ -499,6 +511,7 @@ export class GapManager {
     entry.active = false;
     this.scene.remove(entry.group);
     this.gapPool.push(entry);
+    this.markFloorMaskDirty();
   }
 
   spawnGap(z, width) {
@@ -617,6 +630,7 @@ export class GapManager {
     this.spawnedFirst = false;
     this.time = 0;
     this.runDistance = 0;
+    this.markFloorMaskDirty();
   }
 }
 

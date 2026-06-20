@@ -23,6 +23,8 @@ const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
 const PLAYER_NAME_KEY = 'ebedi-kosu-player-name';
 const MUSIC_PREF_KEY = 'ebedi-kosu-music';
 const SFX_PREF_KEY = 'ebedi-kosu-sfx';
+/** Minimum swipe distance (px) before a touch gesture registers. */
+const TOUCH_SWIPE_THRESHOLD = 30;
 
 export class Game {
   constructor() {
@@ -599,12 +601,27 @@ export class Game {
 
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchHandled = false;
+
+    const beginTouch = (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchHandled = false;
+    };
+
+    const tryTouchGesture = (dx, dy) => {
+      if (touchHandled) return;
+      if (this.handleTouchSwipe(dx, dy)) touchHandled = true;
+    };
+
+    window.addEventListener('touchstart', beginTouch, { passive: true });
 
     window.addEventListener(
-      'touchstart',
+      'touchmove',
       (e) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
+        const touch = e.touches[0];
+        if (!touch) return;
+        tryTouchGesture(touch.clientX - touchStartX, touch.clientY - touchStartY);
       },
       { passive: true }
     );
@@ -612,21 +629,34 @@ export class Game {
     window.addEventListener(
       'touchend',
       (e) => {
-        if (this.state !== 'playing') return;
-        const dx = e.changedTouches[0].clientX - touchStartX;
-        const dy = e.changedTouches[0].clientY - touchStartY;
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-          if (dx > 40) this.handleMove(this.player.moveRight(), 1);
-          else if (dx < -40) this.handleMove(this.player.moveLeft(), -1);
-        } else if (dy < -40) {
-          this.tryJump();
-        } else if (dy > 40) {
-          if (!this.player.startSlide()) this.player.fastFall();
-        }
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        tryTouchGesture(touch.clientX - touchStartX, touch.clientY - touchStartY);
       },
       { passive: true }
     );
+  }
+
+  /** @returns {boolean} true when a gameplay gesture was triggered */
+  handleTouchSwipe(dx, dy) {
+    if (this.state !== 'playing') return false;
+
+    const threshold = TOUCH_SWIPE_THRESHOLD;
+    if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return false;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > threshold) this.handleMove(this.player.moveRight(), 1);
+      else if (dx < -threshold) this.handleMove(this.player.moveLeft(), -1);
+      else return false;
+    } else if (dy < -threshold) {
+      this.tryJump();
+    } else if (dy > threshold) {
+      if (!this.player.startSlide()) this.player.fastFall();
+    } else {
+      return false;
+    }
+
+    return true;
   }
 
   handleMove(result, wallSide) {
@@ -858,9 +888,8 @@ export class Game {
       this.story.update(this.distance, dt);
       this.updateMusicTier();
 
-      this.track.update(dt, runSpeed);
       this.gaps.update(dt, runSpeed, this.distance);
-      this.track.updateGapMask(this.gaps);
+      this.track.update(dt, runSpeed, this.gaps);
       this.obstacles.update(dt, runSpeed, this.distance);
       this.pickups.update(dt, runSpeed, this.camera);
       this.coins.update(dt, runSpeed);

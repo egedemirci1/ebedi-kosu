@@ -201,6 +201,7 @@ export class Track {
   constructor(scene) {
     this.scene = scene;
     this.segments = [];
+    this._gapMaskDirty = true;
     this.poolSize = 14;
     this.pulseTime = 0;
 
@@ -501,11 +502,20 @@ export class Track {
         for (const mesh of tile.meshes) {
           mesh.visible = visible;
         }
-        this.syncInstanceMatrixForSlot(tile.slot);
       }
     }
 
-    this._markInstanceLayersDirty();
+    this._gapMaskDirty = false;
+  }
+
+  markGapMaskDirty() {
+    this._gapMaskDirty = true;
+  }
+
+  consumeGapMaskDirty() {
+    const dirty = this._gapMaskDirty;
+    this._gapMaskDirty = false;
+    return dirty;
   }
 
   getRearZ(exclude = null) {
@@ -517,7 +527,7 @@ export class Track {
     return rear;
   }
 
-  update(dt, speed) {
+  update(dt, speed, gapManager = null) {
     this.pulseTime += dt;
     const pulse = 0.78 + Math.sin(this.pulseTime * 3.2) * 0.14;
     const railPulse = 0.72 + Math.sin(this.pulseTime * 4.1 + 1.2) * 0.16;
@@ -541,6 +551,14 @@ export class Track {
       if (backEdge > RECYCLE_AFTER_Z) {
         const rearZ = this.getRearZ(seg);
         seg.z = rearZ - SEGMENT_LENGTH;
+        this.markGapMaskDirty();
+      }
+    }
+
+    if (gapManager) {
+      const gapDirty = gapManager.consumeFloorMaskDirty();
+      if (this._gapMaskDirty || gapDirty) {
+        this.updateGapMask(gapManager);
       }
     }
 
@@ -564,6 +582,7 @@ export class Track {
       }
     });
     this.syncAllInstanceMatrices();
+    this.markGapMaskDirty();
   }
 }
 

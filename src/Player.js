@@ -27,6 +27,7 @@ const SLIDE_SPARK_COUNT = 3;
 const TRAIL_RUN_COLOR = 0x44ccff;
 const TRAIL_RUN_SPEED_COLOR = 0xb8430a;
 const TRAIL_SLIDE_COLOR = 0x88eeff;
+const LANE_LERP_SPEED = GRAPHICS.mobile ? 20 : 14;
 
 export class Player {
   constructor(scene) {
@@ -494,7 +495,7 @@ export class Player {
       this.x = this.wallBounceHomeX + this.wallBounceSide * push;
       this.targetX = this.wallBounceHomeX;
     } else {
-      this.x += (this.targetX - this.x) * Math.min(1, dt * 14);
+      this.x += (this.targetX - this.x) * Math.min(1, dt * LANE_LERP_SPEED);
     }
 
     if (!hasFloor && this.onGround && !this.isJumping) {
