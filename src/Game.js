@@ -683,8 +683,6 @@ export class Game {
     this.music.setProfile({ song: 'chase', tier: 0 });
     this._fallScreamPlayed = false;
     this._slideSkidTimer = 0;
-    this.runToken = null;
-    this.runActiveMs = 0;
     this.sessionCoins = 0;
     this.speed = this.baseSpeed;
     this.shakeIntensity = 0;
@@ -716,10 +714,11 @@ export class Game {
     this.savePlayerName(this.getPlayerName());
     this.closeShop();
 
-    this.runToken = null;
+    this.resetWorld();
+
     this.runActiveMs = 0;
     const session = await startRunSession();
-    if (session?.token) this.runToken = session.token;
+    this.runToken = session?.token ?? null;
 
     this.music.start();
     this.state = 'playing';
@@ -755,6 +754,8 @@ export class Game {
 
   goToMenu() {
     this.state = 'menu';
+    this.runToken = null;
+    this.runActiveMs = 0;
     this._needsRender = true;
     this.music.stop();
     this.resetWorld();
@@ -799,20 +800,24 @@ export class Game {
       this.setGameOverScoreMsg('Skor tablosu şu an kapalı — skor kaydedilemedi.', true);
       return;
     }
-    const ok = await submitScore(
+    const result = await submitScore(
       name,
       distance,
       this.runToken,
       Math.floor(this.runActiveMs)
     );
     this.runToken = null;
-    if (import.meta.env.DEV) console.log('[leaderboard] submit result', { ok });
-    if (ok) {
+    if (import.meta.env.DEV) console.log('[leaderboard] submit result', result);
+    if (result.ok) {
       this.setGameOverScoreMsg('Skor tablosuna kaydedildi.');
       this.refreshLeaderboard();
       return;
     }
-    this.setGameOverScoreMsg('Skor tablosuna yazılamadı.', true);
+    const reason = result.error === 'rate_limited' ? 'çok fazla deneme' : result.error;
+    this.setGameOverScoreMsg(
+      reason ? `Skor tablosuna yazılamadı (${reason}).` : 'Skor tablosuna yazılamadı.',
+      true
+    );
   }
 
   gameOver(reason = 'caught') {

@@ -46,10 +46,10 @@ export async function submitScore(name, distance, runToken, activeMs) {
     });
     const data = await res.json().catch(() => ({}));
     lbLog('submitScore ←', { status: res.status, ok: res.ok, data });
-    return res.ok;
+    return { ok: res.ok, error: data.error ?? null, status: res.status };
   } catch (err) {
     lbLog('submitScore FAILED', err);
-    return false;
+    return { ok: false, error: 'network_error', status: 0 };
   }
 }
 

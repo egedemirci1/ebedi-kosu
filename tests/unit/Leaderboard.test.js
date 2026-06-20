@@ -92,25 +92,33 @@ describe('Leaderboard client', () => {
   });
 
   describe('submitScore', () => {
-    it('returns true when API accepts score', async () => {
+    it('returns ok when API accepts score', async () => {
       fetch.mockResolvedValue({
         ok: true,
         status: 201,
         json: async () => ({ ok: true }),
       });
 
-      expect(await submitScore('Ali', 250, 'token', 30_000)).toBe(true);
+      expect(await submitScore('Ali', 250, 'token', 30_000)).toEqual({
+        ok: true,
+        error: null,
+        status: 201,
+      });
       expect(fetch).toHaveBeenCalledWith('/api/scores', expect.objectContaining({ method: 'POST' }));
     });
 
-    it('returns false when API rejects score', async () => {
+    it('returns error details when API rejects score', async () => {
       fetch.mockResolvedValue({
         ok: false,
         status: 400,
-        json: async () => ({ ok: false }),
+        json: async () => ({ ok: false, error: 'invalid_payload' }),
       });
 
-      expect(await submitScore('Ali', 0, 'token', 0)).toBe(false);
+      expect(await submitScore('Ali', 0, 'token', 0)).toEqual({
+        ok: false,
+        error: 'invalid_payload',
+        status: 400,
+      });
     });
   });
 });

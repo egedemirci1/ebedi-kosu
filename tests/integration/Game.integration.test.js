@@ -84,6 +84,14 @@ describe('Game integration', () => {
     });
   });
 
+  describe('run session', () => {
+    it('keeps run token after start() resets the world', async () => {
+      game.ui.playerNameInput.value = 'egge';
+      await game.start();
+      expect(game.runToken).toBe('test-token');
+    });
+  });
+
   describe('resetWorld lifecycle', () => {
     it('clears held boosters before repopulating pickups (regression)', () => {
       game.boosters.activate('jump');
