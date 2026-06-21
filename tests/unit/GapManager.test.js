@@ -8,6 +8,9 @@ import {
   GAP_TYPE_BRIDGE,
   MIN_BRIDGE_GAP_WIDTH,
   MAX_BRIDGE_GAP_WIDTH,
+  OBSTACLE_GAP_APPROACH_MARGIN,
+  OBSTACLE_GAP_EXIT_MARGIN,
+  BRIDGE_OBSTACLE_EDGE_PAD,
 } from '../../src/GapManager.js';
 import { createScene, insertGap, insertBridgeGap } from '../helpers/fixtures.js';
 
@@ -56,6 +59,30 @@ describe('GapManager', () => {
     it('respects custom margin for booster placement rules', () => {
       insertGap(gaps, -50, 2.6);
       expect(gaps.isGapNear(-50, GAP_MARGIN + 2)).toBe(true);
+    });
+  });
+
+  describe('isObstacleSpawnBlocked', () => {
+    it('blocks approach side and gap interior but leaves post-gap floor open', () => {
+      insertGap(gaps, -50, 3);
+      expect(gaps.isObstacleSpawnBlocked(-52)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(-48.5)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(-47.5)).toBe(false);
+    });
+
+    it('reserves post-gap corridor spawn points', () => {
+      const entry = insertGap(gaps, -50, 3);
+      expect(entry.postGapObstacleWaves).toBeGreaterThan(0);
+      const spawnZ = gaps.findPostGapSpawnZ((z) => {
+        for (let i = 0; i < gaps._activeCount; i++) {
+          const gap = gaps.gaps[i];
+          if (!gap.active) continue;
+          if (Math.abs(gap.z - z) < 3.5) return false;
+        }
+        return true;
+      });
+      expect(spawnZ).not.toBeNull();
+      expect(gaps.isObstacleSpawnBlocked(spawnZ)).toBe(false);
     });
   });
 
@@ -168,6 +195,16 @@ describe('GapManager', () => {
       expect(gaps.hasFloorAt(-100, 2)).toBe(false);
     });
 
+    it('allows side lanes on bridge entry and exit lips only', () => {
+      const entry = insertBridgeGap(gaps, -100, 6, 1);
+      const { startZ, endZ } = entry;
+
+      expect(gaps.hasFloorAt(-100, 0)).toBe(false);
+      expect(gaps.hasFloorAt(-100, 2)).toBe(false);
+      expect(gaps.hasFloorAt(startZ + 0.1, 0)).toBe(true);
+      expect(gaps.hasFloorAt(endZ - 0.1, 2)).toBe(true);
+    });
+
     it('returns floor outside bridge gap span for every lane', () => {
       insertBridgeGap(gaps, -100, 6, 2);
       expect(gaps.hasFloorAt(-50, 0)).toBe(true);
@@ -186,6 +223,18 @@ describe('GapManager', () => {
         expect(w).toBeGreaterThanOrEqual(MIN_BRIDGE_GAP_WIDTH);
         expect(w).toBeLessThanOrEqual(MAX_BRIDGE_GAP_WIDTH + 0.001);
       }
+    });
+
+    it('reserves extra obstacle-free margin at bridge entry and exit', () => {
+      const entry = insertBridgeGap(gaps, -50, 6, 1);
+      const { startZ, endZ } = entry;
+      const approach = OBSTACLE_GAP_APPROACH_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD;
+      const exit = OBSTACLE_GAP_EXIT_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD;
+
+      expect(gaps.isObstacleSpawnBlocked(startZ - approach + 0.2)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(startZ - approach - 0.2)).toBe(false);
+      expect(gaps.isObstacleSpawnBlocked(endZ + exit - 0.2)).toBe(true);
+      expect(gaps.isObstacleSpawnBlocked(endZ + exit + 0.2)).toBe(false);
     });
   });
 });

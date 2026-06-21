@@ -32,8 +32,8 @@ describe('runPhysics', () => {
     it('adds cumulative bonuses at music tier distances', () => {
       expect(speedGearBonusForDistance(999)).toBe(0);
       expect(speedGearBonusForDistance(1000)).toBe(1.5);
-      expect(speedGearBonusForDistance(3000)).toBe(3);
-      expect(speedGearBonusForDistance(5000)).toBe(5);
+      expect(speedGearBonusForDistance(3000)).toBe(4.75);
+      expect(speedGearBonusForDistance(5000)).toBe(7.25);
     });
 
     it('jumps by the configured bonus at each gear threshold', () => {
@@ -51,8 +51,10 @@ describe('runPhysics', () => {
       expect(runSpeedAtDistance(OVERDRIVE_START_DISTANCE - 1)).toBeGreaterThan(25);
     });
 
-    it('approaches core max only through the smooth curve between gears', () => {
-      expect(runSpeedAtDistance(8000)).toBeLessThan(CORE_MAX_RUN_SPEED + 5.5);
+    it('keeps climbing through mid game before overdrive', () => {
+      expect(runSpeedAtDistance(3000)).toBeGreaterThan(24);
+      expect(runSpeedAtDistance(8000)).toBeGreaterThan(runSpeedAtDistance(3000));
+      expect(runSpeedAtDistance(8000)).toBeLessThan(OVERDRIVE_MAX_SPEED);
     });
 
     it('ramps into overdrive after the late-game threshold', () => {

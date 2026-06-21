@@ -12,8 +12,11 @@ const GAP_DIFFICULTY_DISTANCE = 3500;
 const MIN_BRIDGE_GAP_WIDTH = 5.2;
 const MAX_BRIDGE_GAP_WIDTH = 7.8;
 /** Planks extend past gap edges so no void shows at entry/exit. */
-const BRIDGE_DECK_OVERHANG = 0.55;
-const BRIDGE_FLOOR_PAD = 0.28;
+const BRIDGE_DECK_OVERHANG = 1.2;
+/** Half overhang — walkable lip at bridge entry/exit (strafe on/off deck). */
+const BRIDGE_EDGE_PAD = BRIDGE_DECK_OVERHANG / 2;
+/** Extra obstacle-free clearance at bridge entry/exit (walkable deck). */
+const BRIDGE_OBSTACLE_EDGE_PAD = 1.5;
 
 const GAP_START_DISTANCE = 80;
 const MIN_GAP_WIDTH = 2.4;
@@ -24,6 +27,13 @@ const MAX_GAP_INTERVAL = 54;
 const FIRST_GAP_Z = -105;
 const GAP_LOOKAHEAD = -165;
 const GAP_MARGIN = 4;
+/** Obstacle spawn: block before the gap, minimal block after landing. */
+const OBSTACLE_GAP_APPROACH_MARGIN = 2.5;
+const OBSTACLE_GAP_EXIT_MARGIN = 0.6;
+/** Guaranteed obstacle waves on floor immediately after each gap. */
+const POST_GAP_OBSTACLE_WAVES = 2;
+const POST_GAP_CORRIDOR_LENGTH = 16;
+const POST_GAP_CORRIDOR_SCAN_STEP = 1.1;
 const EMBER_COUNT = 4;
 const FLOOR_LEG_WIDTH = 0.48;
 const FLOOR_LEG_DEPTH = 0.48;
@@ -64,9 +74,9 @@ export class GapManager {
     this.obstacleManager = null;
     this.time = 0;
     this._activeCount = 0;
-    this.version = 0;
     this.currentSpeed = DEFAULT_RUN_SPEED;
     this.runDistance = 0;
+    this._floorMaskDirty = true;
 
     this.emberMats = [
       new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true, fog: false }),
@@ -121,6 +131,16 @@ export class GapManager {
 
   setTrack(track) {
     this.track = track;
+  }
+
+  markFloorMaskDirty() {
+    this._floorMaskDirty = true;
+  }
+
+  consumeFloorMaskDirty() {
+    const dirty = this._floorMaskDirty;
+    this._floorMaskDirty = false;
+    return dirty;
   }
 
   resolveCliffEdges(gapZ, width) {
@@ -330,12 +350,13 @@ export class GapManager {
       const gap = this.gaps[i];
       if (!gap.active) continue;
 
-      if (gap.type === GAP_TYPE_BRIDGE && laneIndex === gap.bridgeLane) {
-        if (
-          worldZ >= gap.startZ - BRIDGE_FLOOR_PAD &&
-          worldZ <= gap.endZ + BRIDGE_FLOOR_PAD
-        ) {
-          return true;
+      if (gap.type === GAP_TYPE_BRIDGE) {
+        const { startZ, endZ, bridgeLane } = gap;
+        if (worldZ >= startZ - BRIDGE_EDGE_PAD && worldZ <= endZ + BRIDGE_EDGE_PAD) {
+          if (laneIndex === bridgeLane) return true;
+          if (worldZ <= startZ + BRIDGE_EDGE_PAD || worldZ >= endZ - BRIDGE_EDGE_PAD) {
+            return true;
+          }
         }
       }
 
@@ -351,6 +372,75 @@ export class GapManager {
       const gap = this.gaps[i];
       if (!gap.active) continue;
       if (worldZ >= gap.startZ - margin && worldZ <= gap.endZ + margin) return true;
+    }
+    return false;
+  }
+
+  _obstacleSpawnMargins(gap) {
+    if (gap.type !== GAP_TYPE_BRIDGE) {
+      return {
+        approach: OBSTACLE_GAP_APPROACH_MARGIN,
+        exit: OBSTACLE_GAP_EXIT_MARGIN,
+      };
+    }
+    return {
+      approach: OBSTACLE_GAP_APPROACH_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD,
+      exit: OBSTACLE_GAP_EXIT_MARGIN + BRIDGE_OBSTACLE_EDGE_PAD,
+    };
+  }
+
+  isObstacleSpawnBlocked(worldZ) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active) continue;
+      const { approach, exit } = this._obstacleSpawnMargins(gap);
+      if (worldZ >= gap.startZ - approach && worldZ <= gap.endZ) {
+        return true;
+      }
+      if (worldZ > gap.endZ && worldZ <= gap.endZ + exit) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  findPostGapSpawnZ(isPositionFree) {
+    let best = null;
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active || (gap.postGapObstacleWaves ?? 0) <= 0) continue;
+
+      const corridorStart = gap.endZ + OBSTACLE_GAP_EXIT_MARGIN + 0.35;
+      const corridorEnd = gap.endZ + POST_GAP_CORRIDOR_LENGTH;
+      for (let z = corridorStart; z <= corridorEnd; z += POST_GAP_CORRIDOR_SCAN_STEP) {
+        if (this.isObstacleSpawnBlocked(z)) continue;
+        if (!isPositionFree(z)) continue;
+        if (best === null || z > best) best = z;
+      }
+    }
+    return best;
+  }
+
+  /** @deprecated use findPostGapSpawnZ */
+  getPostGapCorridorSpawnZ(searchZ) {
+    return this.findPostGapSpawnZ(() => true);
+  }
+
+  noteObstacleSpawnedAt(worldZ) {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (!gap.active || (gap.postGapObstacleWaves ?? 0) <= 0) continue;
+      if (worldZ >= gap.endZ && worldZ <= gap.endZ + POST_GAP_CORRIDOR_LENGTH) {
+        gap.postGapObstacleWaves -= 1;
+        return;
+      }
+    }
+  }
+
+  hasPendingPostGapCorridors() {
+    for (let i = 0; i < this._activeCount; i++) {
+      const gap = this.gaps[i];
+      if (gap.active && (gap.postGapObstacleWaves ?? 0) > 0) return true;
     }
     return false;
   }
@@ -411,7 +501,8 @@ export class GapManager {
       this.gaps.push(entry);
     }
     this._activeCount++;
-    this.version++;
+    entry.postGapObstacleWaves = POST_GAP_OBSTACLE_WAVES;
+    this.markFloorMaskDirty();
 
     return entry;
   }
@@ -420,7 +511,7 @@ export class GapManager {
     entry.active = false;
     this.scene.remove(entry.group);
     this.gapPool.push(entry);
-    this.version++;
+    this.markFloorMaskDirty();
   }
 
   spawnGap(z, width) {
@@ -539,13 +630,17 @@ export class GapManager {
     this.spawnedFirst = false;
     this.time = 0;
     this.runDistance = 0;
-    this.version++;
+    this.markFloorMaskDirty();
   }
 }
 
 export {
   GAP_START_DISTANCE,
   GAP_MARGIN,
+  OBSTACLE_GAP_APPROACH_MARGIN,
+  OBSTACLE_GAP_EXIT_MARGIN,
+  POST_GAP_OBSTACLE_WAVES,
+  POST_GAP_CORRIDOR_LENGTH,
   MIN_FLOOR_BETWEEN_GAPS,
   MIN_GAP_WIDTH,
   ABS_MAX_GAP_WIDTH,
@@ -554,4 +649,5 @@ export {
   BRIDGE_SPAWN_CHANCE,
   MIN_BRIDGE_GAP_WIDTH,
   MAX_BRIDGE_GAP_WIDTH,
+  BRIDGE_OBSTACLE_EDGE_PAD,
 };

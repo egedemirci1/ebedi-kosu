@@ -75,11 +75,14 @@
           <p id="player-name-error" class="player-name-error hidden">Geçerli bir ad gir (2–20 karakter, harf/rakam)</p>
         </div>
         <div class="controls-info">
-          <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
-          <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
-          <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in / yerde kay (alt bariyerlerden geç)</div>
+          <div class="desktop-controls">
+            <h2 class="controls-title">Oynanış</h2>
+            <div><kbd>←</kbd> <kbd>→</kbd> veya <kbd>A</kbd> <kbd>D</kbd> — Şerit değiştir</div>
+            <div><kbd>↑</kbd> <kbd>Space</kbd> veya <kbd>W</kbd> — Zıpla (engel & boşluk)</div>
+            <div><kbd>↓</kbd> veya <kbd>S</kbd> — Havada hızlı in / yerde kay (alt bariyerlerden geç)</div>
+          </div>
           <div class="mobile-controls">
-            <div class="mobile-controls-title">Oynanış</div>
+            <h2 class="controls-title">Oynanış</h2>
             <ul class="mobile-hint-list">
               <li><span class="mobile-hint-action">Sol/Sağ Kaydırma:</span> Şerit Değiştirir</li>
               <li><span class="mobile-hint-action">Yukarı Kaydırma:</span> Zıplama</li>
@@ -187,15 +190,38 @@
           <h1>YAKALANDIN!</h1>
           <div class="game-over-stats">
             <div class="game-over-stat stat-distance">
-              <span class="game-over-stat-label">Mesafe</span>
+              <span class="game-over-stat-left">
+                <span class="game-over-stat-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 4v16M7 4h8l-2.5 3L15 10H7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="game-over-stat-label">Mesafe</span>
+              </span>
               <span id="final-score" class="game-over-stat-value">0 m</span>
             </div>
             <div class="game-over-stat stat-coins" id="final-coins-row">
-              <span class="game-over-stat-label">Altın</span>
+              <span class="game-over-stat-left">
+                <span class="game-over-stat-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.75" fill="currentColor" fill-opacity="0.18"/>
+                    <path d="M12 8.5v7M10 10h3.2a1.2 1.2 0 010 2.4H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <span class="game-over-stat-label">Altın</span>
+              </span>
               <span id="final-coins" class="game-over-stat-value">0</span>
             </div>
             <div class="game-over-stat stat-record" id="best-score-gameover-row">
-              <span class="game-over-stat-label">Rekor</span>
+              <span class="game-over-stat-left">
+                <span class="game-over-stat-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 6h7v2.8a3.2 3.2 0 01-6.4 0V6z" stroke="currentColor" stroke-width="1.75" fill="currentColor" fill-opacity="0.15"/>
+                    <path d="M6 7H4.5a2 2 0 002 2M18 7h1.5a2 2 0 01-2 2M12 12.8V16M9.5 18.5h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <span class="game-over-stat-label">Rekor</span>
+              </span>
               <span id="best-score-gameover" class="game-over-stat-value">0 m</span>
             </div>
           </div>

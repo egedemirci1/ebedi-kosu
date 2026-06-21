@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRAPHICS } from './graphicsProfile.js';
+import { GRAPHICS, applyCanvasTextureSampling } from './graphicsProfile.js';
 import { createSurfaceMaterial } from './surfaceMaterial.js';
 
 const SEGMENT_LENGTH = 20;
@@ -58,7 +58,7 @@ function createWallTexture() {
   ctx.fillRect(88, 0, 40, 256);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  applyCanvasTextureSampling(texture);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   return texture;
@@ -157,11 +157,9 @@ function createFloorSegmentTexture() {
   ctx.fillRect(0, 0, 256, 512);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  applyCanvasTextureSampling(texture);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
@@ -205,6 +203,7 @@ export class Track {
     this.scene = scene;
     this.group = new THREE.Group();
     this.segments = [];
+    this._gapMaskDirty = true;
     this.poolSize = 14;
     this.pulseTime = 0;
     this._gapMaskDirty = true;
@@ -227,7 +226,8 @@ export class Track {
     this.floorTopMat = GRAPHICS.useLambert
       ? new THREE.MeshBasicMaterial({
           map: floorTexture,
-          color: 0xddddee,
+          // Basic = mobilde en ucuz (ışık hesabı yok); eski #ddddee çok parlaktı
+          color: 0xb8b2cc,
           fog: true,
           side: THREE.DoubleSide,
         })
@@ -502,8 +502,6 @@ export class Track {
 
   updateGapMask(gapManager) {
     if (!gapManager) return false;
-    const version = gapManager.version ?? 0;
-    if (!this._gapMaskDirty && this._lastGapMaskVersion === version) return false;
 
     for (const seg of this.segments) {
       for (const tile of seg.trackTiles) {
@@ -519,8 +517,17 @@ export class Track {
 
     this._markInstanceLayersDirty();
     this._gapMaskDirty = false;
-    this._lastGapMaskVersion = version;
     return true;
+  }
+
+  markGapMaskDirty() {
+    this._gapMaskDirty = true;
+  }
+
+  consumeGapMaskDirty() {
+    const dirty = this._gapMaskDirty;
+    this._gapMaskDirty = false;
+    return dirty;
   }
 
   getRearZ(exclude = null) {
@@ -532,7 +539,7 @@ export class Track {
     return rear;
   }
 
-  update(dt, speed) {
+  update(dt, speed, gapManager = null) {
     this.pulseTime += dt;
     const pulse = 0.78 + Math.sin(this.pulseTime * 3.2) * 0.14;
     const railPulse = 0.72 + Math.sin(this.pulseTime * 4.1 + 1.2) * 0.16;
@@ -567,11 +574,14 @@ export class Track {
           this.syncInstanceMatrixForSlot(tile.slot);
         }
         recycled = true;
+        this.markGapMaskDirty();
       }
     }
 
-    if (recycled) {
-      this._gapMaskDirty = true;
+    const gapDirty = gapManager?.consumeFloorMaskDirty() ?? false;
+    if (gapManager && (this._gapMaskDirty || gapDirty)) {
+      this.updateGapMask(gapManager);
+    } else if (recycled) {
       this._markInstanceLayersDirty();
     }
   }
@@ -580,7 +590,6 @@ export class Track {
     this.pulseTime = 0;
     this.group.position.z = 0;
     this._gapMaskDirty = true;
-    this._lastGapMaskVersion = -1;
     if (this.floorTopMat.emissiveIntensity !== undefined) {
       this.floorTopMat.emissiveIntensity = 0.25;
     } else {
@@ -596,6 +605,7 @@ export class Track {
       }
     });
     this.syncAllInstanceMatrices();
+    this.markGapMaskDirty();
   }
 }
 

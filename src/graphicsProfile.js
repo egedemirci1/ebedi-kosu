@@ -1,3 +1,8 @@
+import { LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace } from 'three';
+
+export const MOBILE_MAX_PIXEL_RATIO = 0.9;
+export const DESKTOP_MAX_PIXEL_RATIO = 2;
+
 function isTouchDevice() {
   return (
     typeof window !== 'undefined' &&
@@ -15,10 +20,24 @@ export function isMobileGraphics() {
 
 const mobile = isMobileGraphics();
 
+function resolveMaxPixelRatio() {
+  if (typeof window === 'undefined') return 1;
+  const cap = mobile ? MOBILE_MAX_PIXEL_RATIO : DESKTOP_MAX_PIXEL_RATIO;
+  return Math.min(window.devicePixelRatio, cap);
+}
+
+export function applyCanvasTextureSampling(texture) {
+  texture.colorSpace = SRGBColorSpace;
+  texture.generateMipmaps = true;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  return texture;
+}
+
 export const GRAPHICS = {
   mobile,
   antialias: !mobile,
-  maxPixelRatio: mobile ? 0.9 : Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2),
+  maxPixelRatio: resolveMaxPixelRatio(),
   shadows: !mobile,
   useLambert: mobile,
   instancedFrustumCulled: true,

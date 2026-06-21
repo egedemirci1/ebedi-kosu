@@ -6,16 +6,17 @@ export const CORE_MAX_RUN_SPEED = 21;
 export const MAX_RUN_SPEED = 26;
 export const OVERDRIVE_MAX_SPEED = 30;
 /** Distance scale for the smooth core curve between gear jumps. */
-export const SPEED_RAMP_DISTANCE = 2200;
+export const SPEED_RAMP_DISTANCE = 1800;
 /** After this distance, speed slowly creeps toward OVERDRIVE_MAX. */
 export const OVERDRIVE_START_DISTANCE = 10000;
 export const OVERDRIVE_RAMP_DISTANCE = 12000;
 export const MAX_SPEED_MULTIPLIER = 1.3;
 export const RUN_PHYSICS_TOLERANCE = 1.2;
 
-/** Full danger bar (100%) after this many clean hits with no recovery between them. */
-export const HITS_TO_CATCH = 2;
-export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
+/** Each hit adds this much to the danger bar (0–1). Three hits → 120% capped at 100%. */
+export const DANGER_PER_HIT = 0.4;
+/** @deprecated use DANGER_PER_HIT; kept for docs/tests referencing hit count. */
+export const HITS_TO_CATCH = 1 / DANGER_PER_HIT;
 
 /**
  * Discrete speed jumps — sync with ChaseMusic tiers (1k, 3k) and disco at 5k.
@@ -23,8 +24,9 @@ export const DANGER_PER_HIT = 1 / HITS_TO_CATCH;
  */
 export const SPEED_GEAR_BONUSES = [
   { distance: 1000, bonus: 1.5 },
-  { distance: 3000, bonus: 1.5 },
-  { distance: 5000, bonus: 2.0 },
+  { distance: 2000, bonus: 1.25 },
+  { distance: 3000, bonus: 2.0 },
+  { distance: 5000, bonus: 2.5 },
 ];
 
 const CORE_HEADROOM = CORE_MAX_RUN_SPEED - BASE_RUN_SPEED;

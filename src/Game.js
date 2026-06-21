@@ -23,6 +23,8 @@ const TOTAL_COINS_KEY = 'ebedi-kosu-total-coins';
 const PLAYER_NAME_KEY = 'ebedi-kosu-player-name';
 const MUSIC_PREF_KEY = 'ebedi-kosu-music';
 const SFX_PREF_KEY = 'ebedi-kosu-sfx';
+/** Minimum swipe distance (px) before a touch gesture registers. */
+const TOUCH_SWIPE_THRESHOLD = 30;
 
 export class Game {
   constructor() {
@@ -616,12 +618,27 @@ export class Game {
 
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchHandled = false;
+
+    const beginTouch = (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchHandled = false;
+    };
+
+    const tryTouchGesture = (dx, dy) => {
+      if (touchHandled) return;
+      if (this.handleTouchSwipe(dx, dy)) touchHandled = true;
+    };
+
+    window.addEventListener('touchstart', beginTouch, { passive: true });
 
     window.addEventListener(
-      'touchstart',
+      'touchmove',
       (e) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
+        const touch = e.touches[0];
+        if (!touch) return;
+        tryTouchGesture(touch.clientX - touchStartX, touch.clientY - touchStartY);
       },
       { passive: true }
     );
@@ -629,21 +646,34 @@ export class Game {
     window.addEventListener(
       'touchend',
       (e) => {
-        if (this.state !== 'playing') return;
-        const dx = e.changedTouches[0].clientX - touchStartX;
-        const dy = e.changedTouches[0].clientY - touchStartY;
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-          if (dx > 40) this.handleMove(this.player.moveRight(), 1);
-          else if (dx < -40) this.handleMove(this.player.moveLeft(), -1);
-        } else if (dy < -40) {
-          this.tryJump();
-        } else if (dy > 40) {
-          this.player.requestSlideDown();
-        }
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        tryTouchGesture(touch.clientX - touchStartX, touch.clientY - touchStartY);
       },
       { passive: true }
     );
+  }
+
+  /** @returns {boolean} true when a gameplay gesture was triggered */
+  handleTouchSwipe(dx, dy) {
+    if (this.state !== 'playing') return false;
+
+    const threshold = TOUCH_SWIPE_THRESHOLD;
+    if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return false;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > threshold) this.handleMove(this.player.moveRight(), 1);
+      else if (dx < -threshold) this.handleMove(this.player.moveLeft(), -1);
+      else return false;
+    } else if (dy < -threshold) {
+      this.tryJump();
+    } else if (dy > threshold) {
+      this.player.requestSlideDown();
+    } else {
+      return false;
+    }
+
+    return true;
   }
 
   handleMove(result, wallSide) {
@@ -659,8 +689,7 @@ export class Game {
       this.sfx.playObstacleHit();
     }
     this.player.stumble(0.6, wallSide);
-    const newDanger = Math.min(1, this.creature.dangerLevel + DANGER_PER_HIT);
-    this.creature.applyHitDanger(newDanger);
+    this.creature.addHitPressure(DANGER_PER_HIT);
     this.shakeIntensity = 0.3;
   }
 
@@ -816,7 +845,6 @@ export class Game {
     }
     if (!this.runToken) {
       if (import.meta.env.DEV) console.log('[leaderboard] skip submit — missing run token');
-      this.setGameOverScoreMsg('Skor tablosu şu an kapalı — skor kaydedilemedi.', true);
       return;
     }
     const result = await submitScore(
@@ -828,15 +856,9 @@ export class Game {
     this.runToken = null;
     if (import.meta.env.DEV) console.log('[leaderboard] submit result', result);
     if (result.ok) {
-      this.setGameOverScoreMsg('Skor tablosuna kaydedildi.');
       this.refreshLeaderboard();
       return;
     }
-    const reason = result.error === 'rate_limited' ? 'çok fazla deneme' : result.error;
-    this.setGameOverScoreMsg(
-      reason ? `Skor tablosuna yazılamadı (${reason}).` : 'Skor tablosuna yazılamadı.',
-      true
-    );
   }
 
   gameOver(reason = 'caught') {
@@ -885,15 +907,15 @@ export class Game {
       this.story.update(this.distance, dt);
       this.updateMusicTier();
 
-      this.track.update(dt, runSpeed);
       this.gaps.update(dt, runSpeed, this.distance);
-      this.track.updateGapMask(this.gaps);
+      this.track.update(dt, runSpeed, this.gaps);
       this.obstacles.update(dt, runSpeed, this.distance);
       this.pickups.update(dt, runSpeed, this.camera);
       this.coins.update(dt, runSpeed);
       const wantsDown = this.keys['ArrowDown'] || this.keys['KeyS'];
       this.player.update(dt, this.gaps.hasFloorAt(0, this.player.laneIndex), wantsDown);
       this.player.setGhostVisual(this.boosters.isGhostActive());
+      this.player.setSpeedVisual(this.boosters.isSpeedActive());
 
       if (this.player.consumeSlideStart()) {
         this.sfx.playSlide();
