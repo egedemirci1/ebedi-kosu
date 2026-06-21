@@ -1,6 +1,6 @@
 import { LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace } from 'three';
 
-export const MOBILE_MAX_PIXEL_RATIO = 0.9;
+export const MOBILE_MAX_PIXEL_RATIO = 1.25;
 export const DESKTOP_MAX_PIXEL_RATIO = 2;
 
 function isTouchDevice() {

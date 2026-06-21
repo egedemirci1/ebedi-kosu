@@ -64,11 +64,11 @@ describe('Leaderboard client', () => {
   });
 
   describe('buildLeaderboardDisplayRows', () => {
-    it('returns 10 placeholder rows when fetch failed', () => {
+    it('returns placeholder rows when fetch failed', () => {
       const rows = buildLeaderboardDisplayRows([], true);
       expect(rows).toHaveLength(LEADERBOARD_TOP_N);
       expect(rows[0]).toMatchObject({ rank: 1, player_name: '***', distance: null, isPlaceholder: true });
-      expect(rows[9].rank).toBe(10);
+      expect(rows[LEADERBOARD_TOP_N - 1].rank).toBe(LEADERBOARD_TOP_N);
     });
 
     it('passes through real scores when fetch succeeded', () => {

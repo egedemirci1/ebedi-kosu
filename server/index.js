@@ -91,7 +91,7 @@ app.get('/api/scores/top', async (_req, res) => {
   }
 
   try {
-    const scores = await fetchTopScores(10);
+    const scores = await fetchTopScores(5);
     lbLog('GET /api/scores/top OK', { count: scores?.length ?? 0 });
     res.json({ scores: scores ?? [] });
   } catch (err) {

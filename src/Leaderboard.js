@@ -55,7 +55,7 @@ export async function submitScore(name, distance, runToken, activeMs) {
 
 export { isValidPlayerName, sanitizePlayerName } from '../shared/validation.js';
 
-export const LEADERBOARD_TOP_N = 10;
+export const LEADERBOARD_TOP_N = 5;
 const PLACEHOLDER_NAME = '***';
 
 export function buildLeaderboardDisplayRows(scores, error) {

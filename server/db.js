@@ -56,7 +56,7 @@ export async function pingDatabase() {
   await ensureSchema();
 }
 
-export async function fetchTopScores(limit = 10) {
+export async function fetchTopScores(limit = 5) {
   const db = getPool();
   if (!db) return null;
 
