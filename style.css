@@ -246,9 +246,11 @@ canvas {
 
 #danger-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
   background: linear-gradient(90deg, #ff4444, #ff8844);
-  transition: width 0.15s ease-out;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.12s linear;
   box-shadow: 0 0 8px rgba(255, 80, 60, 0.6);
 }
 
@@ -1414,6 +1416,45 @@ button.shop-backdrop {
 button.shop-backdrop:hover {
   transform: none;
   box-shadow: none;
+}
+
+@media (max-width: 600px), (pointer: coarse) {
+  .hud-item,
+  .hud-pause-btn,
+  .hud-coin-chip,
+  .leaderboard-card,
+  .audio-toggle,
+  .shop-open-btn,
+  .shop-backdrop,
+  .game-over-summary {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .hud-item,
+  #danger-fill,
+  .speed-fx,
+  .ghost-fx,
+  .story-toast,
+  .leaderboard-card,
+  .shop-panel,
+  .game-over-summary,
+  button {
+    box-shadow: none;
+  }
+
+  .speed-fx.visible:not(.flash),
+  .ghost-fx.visible:not(.flash),
+  .jump-fx.visible:not(.flash)::before,
+  .story-toast.visible {
+    animation: none;
+  }
+
+  .speed-fx,
+  .ghost-fx,
+  .jump-fx {
+    transition: opacity 0.12s linear, visibility 0.12s linear;
+  }
 }
 
 .pause-title {

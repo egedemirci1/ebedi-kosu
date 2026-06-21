@@ -47,6 +47,7 @@ export class Player {
     this.trailSpawnTimer = 0;
     this.slideSpawnTimer = 0;
     this._slideStartPending = false;
+    this._slideQueued = false;
     this.isGhostVisual = false;
     this.isSliding = false;
     this.slideTimer = 0;
@@ -170,6 +171,7 @@ export class Player {
     if (!this.onGround) return false;
     this.isSliding = false;
     this.slideTimer = 0;
+    this._slideQueued = false;
     this.onGround = false;
     this.isJumping = true;
     this.vy = superJump ? SUPER_JUMP_VY : JUMP_VY;
@@ -204,6 +206,16 @@ export class Player {
     if (!this.onGround && !this.isFalling) {
       this.vy = Math.min(this.vy, -FAST_FALL_SPEED);
     }
+  }
+
+  /** Mobile: queue slide when airborne so landing starts roll (like holding S on PC). */
+  requestSlideDown() {
+    if (this.startSlide()) return true;
+    if (!this.onGround && !this.isFalling && !this.isStumbling) {
+      this._slideQueued = true;
+      this.fastFall();
+    }
+    return false;
   }
 
   setGhostVisual(active) {
@@ -275,6 +287,7 @@ export class Player {
     this.isSliding = false;
     this.slideTimer = 0;
     this.slideBlend = 0;
+    this._slideQueued = false;
     this.setGhostVisual(false);
     this.resetTrails();
   }
@@ -459,6 +472,7 @@ export class Player {
       this.isSliding = false;
       this.slideTimer = 0;
       this._slideStartPending = false;
+      this._slideQueued = false;
     }
   }
 
@@ -507,6 +521,10 @@ export class Player {
         this.vy = 0;
         this.isJumping = false;
         this.onGround = true;
+        if (this._slideQueued) {
+          this._slideQueued = false;
+          this.startSlide();
+        }
       }
     }
 

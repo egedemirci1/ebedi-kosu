@@ -18,11 +18,14 @@ const mobile = isMobileGraphics();
 export const GRAPHICS = {
   mobile,
   antialias: !mobile,
-  maxPixelRatio: mobile ? 1 : Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2),
+  maxPixelRatio: mobile ? 0.9 : Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2),
   shadows: !mobile,
   useLambert: mobile,
   instancedFrustumCulled: true,
-  starCount: mobile ? 320 : 900,
+  starCount: mobile ? 180 : 900,
+  terrainPool: mobile ? 6 : 9,
+  brightStarCount: mobile ? 4 : 8,
+  auroraCount: mobile ? 1 : 3,
 };
 
 export function applyRendererProfile(renderer) {

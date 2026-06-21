@@ -13,6 +13,7 @@ const FLOOR_Y = -FLOOR_THICKNESS / 2;
 const FLOOR_TOP_Y = FLOOR_THICKNESS / 2;
 const CAMERA_Z = 8;
 const RECYCLE_AFTER_Z = CAMERA_Z + SEGMENT_HALF + 8;
+const REBASE_DISTANCE = 500;
 export const WALL_X = TRACK_WIDTH / 2 + 0.22;
 export const WALL_TILE_WIDTH = 0.45;
 
@@ -202,9 +203,14 @@ function setTranslationMatrix(x, y, z) {
 export class Track {
   constructor(scene) {
     this.scene = scene;
+    this.group = new THREE.Group();
     this.segments = [];
     this.poolSize = 14;
     this.pulseTime = 0;
+    this._gapMaskDirty = true;
+    this._lastGapMaskVersion = -1;
+
+    this.scene.add(this.group);
 
     const wallTexture = createWallTexture();
     wallTexture.repeat.set(1, FLOOR_TILE_LENGTH / 10);
@@ -295,7 +301,7 @@ export class Track {
       mesh.receiveShadow = GRAPHICS.shadows;
       mesh.frustumCulled = false;
       mesh.renderOrder = 1;
-      this.scene.add(mesh);
+      this.group.add(mesh);
       return mesh;
     });
 
@@ -307,17 +313,17 @@ export class Track {
     this.floorBodyMesh.instanceMatrix.setUsage(dynamic);
     this.floorBodyMesh.receiveShadow = GRAPHICS.shadows;
     this.floorBodyMesh.frustumCulled = false;
-    this.scene.add(this.floorBodyMesh);
+    this.group.add(this.floorBodyMesh);
 
     this.wallLeftMesh = new THREE.InstancedMesh(this.wallTileGeo, this.wallMat, this.maxTileSlots);
     this.wallLeftMesh.instanceMatrix.setUsage(dynamic);
     this.wallLeftMesh.frustumCulled = false;
-    this.scene.add(this.wallLeftMesh);
+    this.group.add(this.wallLeftMesh);
 
     this.wallRightMesh = new THREE.InstancedMesh(this.wallTileGeo, this.wallMat, this.maxTileSlots);
     this.wallRightMesh.instanceMatrix.setUsage(dynamic);
     this.wallRightMesh.frustumCulled = false;
-    this.scene.add(this.wallRightMesh);
+    this.group.add(this.wallRightMesh);
 
     this.decorTrimLeftMesh = new THREE.InstancedMesh(
       this.trimTileGeo,
@@ -326,7 +332,7 @@ export class Track {
     );
     this.decorTrimLeftMesh.instanceMatrix.setUsage(dynamic);
     this.decorTrimLeftMesh.frustumCulled = false;
-    this.scene.add(this.decorTrimLeftMesh);
+    this.group.add(this.decorTrimLeftMesh);
 
     this.decorCapLeftMesh = new THREE.InstancedMesh(
       this.capTileGeo,
@@ -335,7 +341,7 @@ export class Track {
     );
     this.decorCapLeftMesh.instanceMatrix.setUsage(dynamic);
     this.decorCapLeftMesh.frustumCulled = false;
-    this.scene.add(this.decorCapLeftMesh);
+    this.group.add(this.decorCapLeftMesh);
 
     this.decorTrimRightMesh = new THREE.InstancedMesh(
       this.trimTileGeo,
@@ -344,7 +350,7 @@ export class Track {
     );
     this.decorTrimRightMesh.instanceMatrix.setUsage(dynamic);
     this.decorTrimRightMesh.frustumCulled = false;
-    this.scene.add(this.decorTrimRightMesh);
+    this.group.add(this.decorTrimRightMesh);
 
     this.decorCapRightMesh = new THREE.InstancedMesh(
       this.capTileGeo,
@@ -353,17 +359,17 @@ export class Track {
     );
     this.decorCapRightMesh.instanceMatrix.setUsage(dynamic);
     this.decorCapRightMesh.frustumCulled = false;
-    this.scene.add(this.decorCapRightMesh);
+    this.group.add(this.decorCapRightMesh);
 
     this.railLeftMesh = new THREE.InstancedMesh(this.railTileGeo, this.railMat, this.maxTileSlots);
     this.railLeftMesh.instanceMatrix.setUsage(dynamic);
     this.railLeftMesh.frustumCulled = false;
-    this.scene.add(this.railLeftMesh);
+    this.group.add(this.railLeftMesh);
 
     this.railRightMesh = new THREE.InstancedMesh(this.railTileGeo, this.railMat, this.maxTileSlots);
     this.railRightMesh.instanceMatrix.setUsage(dynamic);
     this.railRightMesh.frustumCulled = false;
-    this.scene.add(this.railRightMesh);
+    this.group.add(this.railRightMesh);
   }
 
   createSegment(z) {
@@ -399,53 +405,53 @@ export class Track {
     if (!segment) return;
 
     const tile = segment.trackTiles[tileIndex];
-    const worldZ = segment.z + tile.localZ;
+    const localZ = segment.z + tile.localZ;
     const hidden = HIDDEN_MATRIX;
     const visible = tile.visible;
 
     this.floorTopLayers[tileIndex].setMatrixAt(
       segIndex,
-      visible ? setTranslationMatrix(0, FLOOR_TOP_Y + 0.002, worldZ) : hidden
+      visible ? setTranslationMatrix(0, FLOOR_TOP_Y + 0.002, localZ) : hidden
     );
 
     this.floorBodyMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(0, FLOOR_Y, worldZ) : hidden
+      visible ? setTranslationMatrix(0, FLOOR_Y, localZ) : hidden
     );
 
     this.wallLeftMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(-this.wallX, 1.5, worldZ) : hidden
+      visible ? setTranslationMatrix(-this.wallX, 1.5, localZ) : hidden
     );
 
     this.wallRightMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(this.wallX, 1.5, worldZ) : hidden
+      visible ? setTranslationMatrix(this.wallX, 1.5, localZ) : hidden
     );
 
     this.decorTrimLeftMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(-this.trimX, 1.5, worldZ) : hidden
+      visible ? setTranslationMatrix(-this.trimX, 1.5, localZ) : hidden
     );
     this.decorCapLeftMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(-this.wallX, 2.98, worldZ) : hidden
+      visible ? setTranslationMatrix(-this.wallX, 2.98, localZ) : hidden
     );
     this.decorTrimRightMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(this.trimX, 1.5, worldZ) : hidden
+      visible ? setTranslationMatrix(this.trimX, 1.5, localZ) : hidden
     );
     this.decorCapRightMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(this.wallX, 2.98, worldZ) : hidden
+      visible ? setTranslationMatrix(this.wallX, 2.98, localZ) : hidden
     );
     this.railLeftMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(-TRACK_WIDTH / 2, 0.06, worldZ) : hidden
+      visible ? setTranslationMatrix(-TRACK_WIDTH / 2, 0.06, localZ) : hidden
     );
     this.railRightMesh.setMatrixAt(
       slot,
-      visible ? setTranslationMatrix(TRACK_WIDTH / 2, 0.06, worldZ) : hidden
+      visible ? setTranslationMatrix(TRACK_WIDTH / 2, 0.06, localZ) : hidden
     );
   }
 
@@ -466,19 +472,22 @@ export class Track {
 
   findSegmentNearest(worldZ) {
     let best = this.segments[0];
+    const offsetZ = this.group.position.z;
     for (const seg of this.segments) {
-      if (Math.abs(worldZ - seg.z) < Math.abs(worldZ - best.z)) best = seg;
+      const segWorldZ = offsetZ + seg.z;
+      const bestWorldZ = offsetZ + best.z;
+      if (Math.abs(worldZ - segWorldZ) < Math.abs(worldZ - bestWorldZ)) best = seg;
     }
     return best;
   }
 
   getFloorEdgeBeforeGap(gapStartZ, hintZ = gapStartZ) {
-    const base = this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
+    const base = this.group.position.z + this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
     return base + FLOOR_TILE_LENGTH * Math.floor((gapStartZ - base) / FLOOR_TILE_LENGTH);
   }
 
   getFloorEdgeAfterGap(gapEndZ, hintZ = gapEndZ) {
-    const base = this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
+    const base = this.group.position.z + this.findSegmentNearest(hintZ).z - SEGMENT_HALF;
     return base + FLOOR_TILE_LENGTH * Math.ceil((gapEndZ - base) / FLOOR_TILE_LENGTH);
   }
 
@@ -492,11 +501,13 @@ export class Track {
   }
 
   updateGapMask(gapManager) {
-    if (!gapManager) return;
+    if (!gapManager) return false;
+    const version = gapManager.version ?? 0;
+    if (!this._gapMaskDirty && this._lastGapMaskVersion === version) return false;
 
     for (const seg of this.segments) {
       for (const tile of seg.trackTiles) {
-        const worldZ = seg.z + tile.localZ;
+        const worldZ = this.group.position.z + seg.z + tile.localZ;
         const visible = !this.tileIntersectsGap(gapManager, worldZ);
         tile.visible = visible;
         for (const mesh of tile.meshes) {
@@ -507,6 +518,9 @@ export class Track {
     }
 
     this._markInstanceLayersDirty();
+    this._gapMaskDirty = false;
+    this._lastGapMaskVersion = version;
+    return true;
   }
 
   getRearZ(exclude = null) {
@@ -532,24 +546,41 @@ export class Track {
     }
 
     const move = speed * dt;
-
-    for (const seg of this.segments) {
-      seg.z += move;
+    this.group.position.z += move;
+    if (this.group.position.z > REBASE_DISTANCE) {
+      const offset = this.group.position.z;
+      for (const seg of this.segments) {
+        seg.z += offset;
+      }
+      this.group.position.z = 0;
+      this.syncAllInstanceMatrices();
+      this._gapMaskDirty = true;
     }
 
+    let recycled = false;
     for (const seg of this.segments) {
-      const backEdge = seg.z - SEGMENT_HALF;
+      const backEdge = this.group.position.z + seg.z - SEGMENT_HALF;
       if (backEdge > RECYCLE_AFTER_Z) {
         const rearZ = this.getRearZ(seg);
         seg.z = rearZ - SEGMENT_LENGTH;
+        for (const tile of seg.trackTiles) {
+          this.syncInstanceMatrixForSlot(tile.slot);
+        }
+        recycled = true;
       }
     }
 
-    this.syncAllInstanceMatrices();
+    if (recycled) {
+      this._gapMaskDirty = true;
+      this._markInstanceLayersDirty();
+    }
   }
 
   reset() {
     this.pulseTime = 0;
+    this.group.position.z = 0;
+    this._gapMaskDirty = true;
+    this._lastGapMaskVersion = -1;
     if (this.floorTopMat.emissiveIntensity !== undefined) {
       this.floorTopMat.emissiveIntensity = 0.25;
     } else {

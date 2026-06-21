@@ -105,6 +105,33 @@ describe('Player', () => {
       const activeSparks = player.slideSparks.filter((s) => s.life > 0);
       expect(activeSparks.length).toBeGreaterThan(0);
     });
+
+    it('queues slide when requesting slide down while airborne', () => {
+      player.jump(false);
+      expect(player.requestSlideDown()).toBe(false);
+      expect(player.isSliding).toBe(false);
+
+      let landedSliding = false;
+      for (let i = 0; i < 200; i++) {
+        player.update(0.016, true, false);
+        if (player.onGround && player.isSliding) {
+          landedSliding = true;
+          break;
+        }
+      }
+      expect(landedSliding).toBe(true);
+    });
+
+    it('starts slide immediately when requesting slide down on the ground', () => {
+      expect(player.requestSlideDown()).toBe(true);
+      expect(player.isSliding).toBe(true);
+    });
+
+    it('clears queued slide when jumping from the ground', () => {
+      player._slideQueued = true;
+      player.jump(false);
+      expect(player._slideQueued).toBe(false);
+    });
   });
 
   describe('lane walls', () => {

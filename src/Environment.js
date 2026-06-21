@@ -61,7 +61,7 @@ function createStarField(count = 900) {
 function createBrightStars() {
   const group = new THREE.Group();
   const stars = [];
-  const count = 8;
+  const count = GRAPHICS.brightStarCount;
 
   for (let i = 0; i < count; i++) {
     const theta = Math.random() * Math.PI * 2;
@@ -130,7 +130,7 @@ const STRIP_BACKOFF = 6;
 /** Foremost baked peak local Z (mid-layer) — strip recycles only after this passes the camera. */
 const TERRAIN_LOCAL_Z_MIN = -20;
 const TERRAIN_RECYCLE_Z = RECYCLE_AFTER_Z - TERRAIN_LOCAL_Z_MIN;
-const TERRAIN_POOL = 9;
+const TERRAIN_POOL = GRAPHICS.terrainPool;
 
 /** Deterministic 0..1 — same seed → same silhouette, no per-frame randomness */
 function seededRandom(seed) {
@@ -342,6 +342,7 @@ export class Environment {
     this._cycleMoonVis = 1;
     this._cycleMoonGlow = 0.08;
     this._cycleMoonHalo = 0.03;
+    this._decorUpdateTimer = 0;
 
     const initialSky = createSkyTexture(
       ['#141022', '#221838', '#342850', '#5a4870', '#8878a0', '#a898b0'],
@@ -349,7 +350,7 @@ export class Environment {
     );
     this.skyTexture = initialSky.texture;
     const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(85, 32, 24),
+      new THREE.SphereGeometry(85, GRAPHICS.mobile ? 24 : 32, GRAPHICS.mobile ? 16 : 24),
       new THREE.MeshBasicMaterial({
         map: this.skyTexture,
         side: THREE.BackSide,
@@ -403,7 +404,7 @@ export class Environment {
     this.moonHalo.position.copy(this.moon.position);
     this.skyGroup.add(this.moonHalo);
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < GRAPHICS.auroraCount; i++) {
       const aurora = new THREE.Mesh(
         new THREE.PlaneGeometry(50, 12),
         new THREE.MeshBasicMaterial({
@@ -481,22 +482,26 @@ export class Environment {
     this.time += dt;
     this.skyGroup.position.set(camera.position.x * 0.15, camera.position.y * 0.3, camera.position.z);
 
-    const starPulse = 0.88 + Math.sin(this.time * 2.4) * 0.12;
-    this.stars.material.size = this.starBaseSize * starPulse;
-    this.stars.material.opacity = this._cycleStarOpacity * (0.94 + Math.sin(this.time * 1.8) * 0.06);
+    this._decorUpdateTimer += dt;
+    if (!GRAPHICS.mobile || this._decorUpdateTimer >= 1 / 30) {
+      this._decorUpdateTimer = 0;
+      const starPulse = 0.88 + Math.sin(this.time * 2.4) * 0.12;
+      this.stars.material.size = this.starBaseSize * starPulse;
+      this.stars.material.opacity = this._cycleStarOpacity * (0.94 + Math.sin(this.time * 1.8) * 0.06);
 
-    for (const star of this.brightStars) {
-      const twinkle = 0.45 + Math.sin(this.time * star.speed + star.phase) * 0.35;
-      star.mesh.material.opacity = twinkle;
-      const scale = 0.85 + Math.sin(this.time * star.speed * 1.3 + star.phase) * 0.2;
-      star.mesh.scale.setScalar(scale);
+      for (const star of this.brightStars) {
+        const twinkle = 0.45 + Math.sin(this.time * star.speed + star.phase) * 0.35;
+        star.mesh.material.opacity = twinkle;
+        const scale = 0.85 + Math.sin(this.time * star.speed * 1.3 + star.phase) * 0.2;
+        star.mesh.scale.setScalar(scale);
+      }
+
+      const moonPulse = 0.92 + Math.sin(this.time * 0.9) * 0.08;
+      this.moonGlow.scale.setScalar(moonPulse);
+      this.moonGlow.material.opacity = this._cycleMoonGlow * (0.92 + Math.sin(this.time * 1.1) * 0.08);
+      this.moonHalo.scale.setScalar(0.95 + Math.sin(this.time * 0.7) * 0.08);
+      this.moonHalo.material.opacity = this._cycleMoonHalo * (0.95 + Math.sin(this.time * 0.85 + 1) * 0.05);
     }
-
-    const moonPulse = 0.92 + Math.sin(this.time * 0.9) * 0.08;
-    this.moonGlow.scale.setScalar(moonPulse);
-    this.moonGlow.material.opacity = this._cycleMoonGlow * (0.92 + Math.sin(this.time * 1.1) * 0.08);
-    this.moonHalo.scale.setScalar(0.95 + Math.sin(this.time * 0.7) * 0.08);
-    this.moonHalo.material.opacity = this._cycleMoonHalo * (0.95 + Math.sin(this.time * 0.85 + 1) * 0.05);
 
     const parallax = speed * dt * 0.38;
 
@@ -522,5 +527,6 @@ export class Environment {
     this.terrainStrips.forEach((strip, i) => {
       strip.position.z = -i * STRIP_SPACING - 18;
     });
+    this._decorUpdateTimer = 0;
   }
 }

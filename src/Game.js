@@ -116,6 +116,21 @@ export class Game {
       storyToastMilestone: document.getElementById('story-toast-milestone'),
       storyToastText: document.getElementById('story-toast-text'),
     };
+    this.ui.boosterGhostTime = this.ui.boosterGhost?.querySelector('.booster-time') ?? null;
+    this.ui.boosterJumpTime = this.ui.boosterJump?.querySelector('.booster-time') ?? null;
+    this.ui.boosterSpeedTime = this.ui.boosterSpeed?.querySelector('.booster-time') ?? null;
+
+    this._uiUpdateTimer = 0;
+    this._boosterHudTimer = 0;
+    this._dayCycleVisualTimer = 0;
+    this._lastScoreText = '';
+    this._lastCoinText = '';
+    this._lastDangerScale = -1;
+    this._boosterHudCache = {
+      ghost: { active: null, text: '' },
+      jump: { active: null, text: '' },
+      speed: { active: null, text: '' },
+    };
 
     this.story = new StoryManager({
       toast: this.ui.storyToast,
@@ -533,26 +548,28 @@ export class Game {
     this.updateUI();
   }
 
+  updateBoosterChip(type, element, timeElement, value) {
+    if (!element) return;
+    const cache = this._boosterHudCache[type];
+    const active = value > 0;
+    const text = active ? `${value.toFixed(1)}s` : '';
+
+    if (cache.active !== active) {
+      element.classList.toggle('active', active);
+      cache.active = active;
+    }
+    if (timeElement && cache.text !== text) {
+      timeElement.textContent = text;
+      cache.text = text;
+    }
+  }
+
   updateBoosterHUD() {
     const state = this.boosters.getHudState();
 
-    if (this.ui.boosterGhost) {
-      this.ui.boosterGhost.classList.toggle('active', state.ghost > 0);
-      const time = this.ui.boosterGhost.querySelector('.booster-time');
-      if (time) time.textContent = state.ghost > 0 ? `${state.ghost.toFixed(1)}s` : '';
-    }
-
-    if (this.ui.boosterJump) {
-      this.ui.boosterJump.classList.toggle('active', state.jump > 0);
-      const time = this.ui.boosterJump.querySelector('.booster-time');
-      if (time) time.textContent = state.jump > 0 ? `${state.jump.toFixed(1)}s` : '';
-    }
-
-    if (this.ui.boosterSpeed) {
-      this.ui.boosterSpeed.classList.toggle('active', state.speed > 0);
-      const time = this.ui.boosterSpeed.querySelector('.booster-time');
-      if (time) time.textContent = state.speed > 0 ? `${state.speed.toFixed(1)}s` : '';
-    }
+    this.updateBoosterChip('ghost', this.ui.boosterGhost, this.ui.boosterGhostTime, state.ghost);
+    this.updateBoosterChip('jump', this.ui.boosterJump, this.ui.boosterJumpTime, state.jump);
+    this.updateBoosterChip('speed', this.ui.boosterSpeed, this.ui.boosterSpeedTime, state.speed);
 
     this.updateSpeedFx();
     this.updateJumpFx();
@@ -622,7 +639,7 @@ export class Game {
         } else if (dy < -40) {
           this.tryJump();
         } else if (dy > 40) {
-          if (!this.player.startSlide()) this.player.fastFall();
+          this.player.requestSlideDown();
         }
       },
       { passive: true }
@@ -699,7 +716,11 @@ export class Game {
     this.story.reset();
     this.applyDayCycleVisuals();
     this.player.setGhostVisual(false);
+    this._uiUpdateTimer = 0;
+    this._boosterHudTimer = 0;
+    this._dayCycleVisualTimer = 0;
     this.updateBoosterHUD();
+    this.updateUI();
     const profile = getCameraProfile(this.camera.aspect);
     this.camera.fov = profile.baseFov;
     this._lastCamFov = profile.baseFov;
@@ -713,8 +734,6 @@ export class Game {
     }
     this.savePlayerName(this.getPlayerName());
     this.closeShop();
-
-    this.resetWorld();
 
     this.runActiveMs = 0;
     const session = await startRunSession();
@@ -941,12 +960,24 @@ export class Game {
       }
 
       this.music.setDanger(this.creature.dangerLevel);
-      this.dayCycle.setDistance(this.distance);
-      this.applyDayCycleVisuals();
+      this._dayCycleVisualTimer -= dt;
+      if (this._dayCycleVisualTimer <= 0) {
+        this.dayCycle.setDistance(this.distance);
+        this.applyDayCycleVisuals();
+        this._dayCycleVisualTimer = 0.25;
+      }
       this.environment.update(dt, runSpeed, this.camera);
       this.updateCamera(dt);
-      this.updateUI();
-      this.updateBoosterHUD();
+      this._uiUpdateTimer -= dt;
+      if (this._uiUpdateTimer <= 0) {
+        this.updateUI();
+        this._uiUpdateTimer = 0.1;
+      }
+      this._boosterHudTimer -= dt;
+      if (this._boosterHudTimer <= 0) {
+        this.updateBoosterHUD();
+        this._boosterHudTimer = 0.1;
+      }
       this._needsRender = true;
     }
   }
@@ -1001,10 +1032,23 @@ export class Game {
   }
 
   updateUI() {
-    this.ui.score.textContent = Math.floor(this.distance);
-    if (this.ui.coinCount) this.ui.coinCount.textContent = String(this.sessionCoins);
-    const pct = this.creature.dangerLevel * 100;
-    this.ui.dangerFill.style.width = `${pct}%`;
+    const scoreText = String(Math.floor(this.distance));
+    if (this._lastScoreText !== scoreText) {
+      this.ui.score.textContent = scoreText;
+      this._lastScoreText = scoreText;
+    }
+
+    const coinText = String(this.sessionCoins);
+    if (this.ui.coinCount && this._lastCoinText !== coinText) {
+      this.ui.coinCount.textContent = coinText;
+      this._lastCoinText = coinText;
+    }
+
+    const dangerScale = Math.round(this.creature.dangerLevel * 1000) / 1000;
+    if (this._lastDangerScale !== dangerScale) {
+      this.ui.dangerFill.style.transform = `scaleX(${dangerScale})`;
+      this._lastDangerScale = dangerScale;
+    }
   }
 
   onResize() {

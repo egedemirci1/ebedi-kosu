@@ -60,10 +60,10 @@ export function createCamera() {
 
 export function getCameraProfile(aspect) {
   if (aspect < 0.72) {
-    return { baseFov: 78, baseY: 6.4, baseZ: 11.5, lookZ: -4.5 };
+    return { baseFov: 72, baseY: 6, baseZ: 9.5, lookZ: -4.7 };
   }
   if (aspect < 1) {
-    return { baseFov: 72, baseY: 6, baseZ: 10, lookZ: -4.8 };
+    return { baseFov: 68, baseY: 5.8, baseZ: 9, lookZ: -4.85 };
   }
   return { baseFov: 65, baseY: 5.5, baseZ: 8, lookZ: -5 };
 }

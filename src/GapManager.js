@@ -64,6 +64,7 @@ export class GapManager {
     this.obstacleManager = null;
     this.time = 0;
     this._activeCount = 0;
+    this.version = 0;
     this.currentSpeed = DEFAULT_RUN_SPEED;
     this.runDistance = 0;
 
@@ -410,6 +411,7 @@ export class GapManager {
       this.gaps.push(entry);
     }
     this._activeCount++;
+    this.version++;
 
     return entry;
   }
@@ -418,6 +420,7 @@ export class GapManager {
     entry.active = false;
     this.scene.remove(entry.group);
     this.gapPool.push(entry);
+    this.version++;
   }
 
   spawnGap(z, width) {
@@ -536,6 +539,7 @@ export class GapManager {
     this.spawnedFirst = false;
     this.time = 0;
     this.runDistance = 0;
+    this.version++;
   }
 }
 
